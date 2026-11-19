@@ -1,0 +1,23 @@
+{
+  "name": "wow-interactive-mern",
+  "version": "1.0.0",
+  "description": "Wow Interactive MERN Stack Application: Live Word Clouds, Map Polls & Audience Q&A",
+  "scripts": {
+    "install:server": "cd server && npm install",
+    "install:client": "cd client && npm install",
+    "install:all": "npm run install:server && npm run install:client",
+    "server": "cd server && npm start",
+    "server:dev": "cd server && npm run dev",
+    "client": "cd client && npm run dev",
+    "client:build": "cd client && npm run build",
+    "build": "npm run client:build",
+    "start": "npm run server",
+    "dev": "concurrently \"npm run server\" \"npm run client\""
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -1,75 +1,46 @@
-name: Deploy Wow Interactive to CloudPanel
+name: Deploy Wow Interactive to Hostinger
 
 on:
   push:
     branches:
-      - main  # Triggers when you push to the main branch
+      - main
 
 jobs:
   deploy:
+    name: Deploy to VPS
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Deploy Frontend and Backend via SSH
+      - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_KEY }}
+          timeout: 10m
           script: |
-            set -e
 
-            # 1. Ensure Node.js, npm, and PM2 are in PATH for non-login SSH sessions
-            export NVM_DIR="$HOME/.nvm"
-            if [ -s "$NVM_DIR/nvm.sh" ]; then
-              \. "$NVM_DIR/nvm.sh"
-            fi
-            export PATH=$PATH:/usr/local/bin:$HOME/.local/bin:$HOME/.nvm/versions/node/$(nvm current 2>/dev/null)/bin
+            # 2. Navigate to your project directory
+            cd /var/www/Wow-Interactive
 
-            echo "Node version: $(node -v 2>/dev/null || echo 'Not in PATH')"
-            echo "npm version: $(npm -v 2>/dev/null || echo 'Not in PATH')"
-
-            # 2. Navigate to the project root directory
-            cd ${{ secrets.DEPLOY_PATH }}
-
-            # 3. Pull the latest full-stack code from GitHub
+            # 3. Pull the latest code from GitHub
             git fetch --all
             git reset --hard origin/main
 
-            # ==========================================
-            # 4. DEPLOY FRONTEND (client)
-            # ==========================================
-            echo "Building Frontend (client)..."
+            # 4. Build the React Frontend
+            echo "Building Frontend..."
             cd client
-            npm ci || npm install
-            npm run build       # Creates /dist folder
+            npm install
+            npm run build
             cd ..
 
-            # ==========================================
-            # 5. DEPLOY BACKEND (server)
-            # ==========================================
-            echo "Deploying Backend (server)..."
+            # 5. Setup Backend and Restart
+            echo "Updating Backend..."
             cd server
+            npm install --production
 
-            # Check if .env exists, create from .env.example if missing
-            if [ ! -f .env ] && [ -f .env.example ]; then
-              echo "Creating initial .env from .env.example..."
-              cp .env.example .env
-            fi
+            # 6. Restart PM2 and Nginx
+            echo "Restarting Services..."
+            pm2 restart all || pm2 start server.js --name "wow-interactive"
+            sudo systemctl reload nginx
 
-            npm ci --omit=dev || npm install --omit=dev
-
-            # 6. Restart PM2 Process (wow-interactive)
-            echo "Restarting application with PM2..."
-            if pm2 describe wow-interactive > /dev/null 2>&1; then
-              pm2 reload wow-interactive --update-env
-            elif [ -f ecosystem.config.js ]; then
-              pm2 start ecosystem.config.js --env production
-            else
-              pm2 start server.js --name "wow-interactive"
-            fi
-
-            pm2 save
-            echo "Deployment Complete!"
+            echo "Deployment Successful!"

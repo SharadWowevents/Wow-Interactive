@@ -1,72 +1,60 @@
-import React, { useEffect, useRef } from 'react';
-import WordCloud from 'wordcloud';
+import React, { useEffect, useRef, useState } from 'react';
 
 const DARK = ['#ffd166', '#ff6b9a', '#7cc8ff', '#9d8bff', '#5fe3b4', '#ffa36c', '#f9f871', '#c4b5ff', '#ff8fab', '#8ee3f5'];
 const LIGHT = ['#5b3df5', '#e8417a', '#0b8aa8', '#d9480f', '#11865b', '#7b2cbf', '#c2255c', '#1c7ed6', '#e67700', '#2b8a3e'];
 
 export default function LiveCloud({ data, showQr, theme }) {
-  const canvasRef = useRef(null);
   const containerRef = useRef(null);
+  const [box, setBox] = useState({ width: 0, height: 0 });
 
   const words = data?.words || [];
   const top = words.slice(0, 3);
   const answerUrl = `${window.location.origin}/q/${data?.id}`;
   const displayUrl = answerUrl.replace(/^https?:\/\//, '');
 
+  // Measure the cloud area (the old canvas word-cloud guessed word sizes
+  // before the display font loaded, so words landed on top of each other —
+  // e.g. "Divya" + "Kumar" in the same spot, and "Kumar" drifting away
+  // from "Deepak Kumar"). The cloud below is laid out with normal flow,
+  // which can never overlap, and every answer stays on one line.
   useEffect(() => {
-    if (!canvasRef.current || !containerRef.current) return;
-    const canvas = canvasRef.current;
-    const box = containerRef.current.getBoundingClientRect();
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const el = containerRef.current;
+    if (!el) return;
+    const update = () => {
+      const rect = el.getBoundingClientRect();
+      setBox({ width: rect.width, height: rect.height });
+    };
+    update();
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null;
+    if (observer) observer.observe(el);
+    window.addEventListener('resize', update);
+    return () => {
+      if (observer) observer.disconnect();
+      window.removeEventListener('resize', update);
+    };
+  }, []);
 
-    canvas.width = Math.max(1, Math.round(box.width * dpr));
-    canvas.height = Math.max(1, Math.round(box.height * dpr));
-
-    if (!words.length) {
-      const ctx = canvas.getContext('2d');
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      return;
-    }
-
-    const max = words[0].count;
-    const min = words[words.length - 1].count;
-    const longest = Math.max(...words.slice(0, 3).map(w => w.text.length), 3);
-    const maxPx = Math.min(box.height * 0.28, (box.width * 0.9) / (longest * 0.58));
-    const minPx = Math.max(14, Math.min(maxPx * 0.16, 34));
-    const few = words.length < 6;
-    const sizeOf = c => (max === min ? (few ? maxPx * 0.75 : maxPx * 0.45) : minPx + (maxPx - minPx) * Math.pow((c - min) / (max - min), 0.7));
-    const palette = theme === 'light' ? LIGHT : DARK;
-    const rankOf = new Map(words.map((w, i) => [w.text, i]));
-
-    try {
-      WordCloud.stop && WordCloud.stop();
-      WordCloud(canvas, {
-        list: words.map(w => [w.text, w.count]),
-        weightFactor: c => sizeOf(c) * dpr,
-        fontFamily: "'Bricolage Grotesque', 'Plus Jakarta Sans', sans-serif",
-        fontWeight: (word, weight) => (weight >= max * 0.6 ? 800 : weight >= max * 0.3 ? 700 : 500),
-        color: (word, weight) => {
-          const r = rankOf.get(word) ?? 9;
-          if (r === 0) return palette[0];
-          const a = weight >= max * 0.3 ? 1 : 0.78;
-          const c = palette[1 + (r % (palette.length - 1))];
-          return a === 1 ? c : c + 'c8';
-        },
-        backgroundColor: 'rgba(0,0,0,0)',
-        gridSize: Math.round(8 * dpr),
-        rotateRatio: 0,
-        shuffle: false,
-        shrinkToFit: true,
-        drawOutOfBound: false,
-        origin: [canvas.width / 2, canvas.height / 2],
-        ellipticity: Math.min(1, box.height / box.width * 1.25),
-        wait: 0,
-        clearCanvas: true
-      });
-    } catch (e) {
-      console.error('WordCloud render error', e);
-    }
-  }, [words, theme]);
+  const palette = theme === 'light' ? LIGHT : DARK;
+  const sorted = [...words].sort((a, b) => b.count - a.count);
+  const max = sorted.length ? sorted[0].count : 0;
+  const min = sorted.length ? sorted[sorted.length - 1].count : 0;
+  // Longest answer overall decides the cap, so a long full name
+  // ("Deepak Kumar") always fits on one line instead of being split.
+  const longest = sorted.reduce((acc, w) => Math.max(acc, (w.text || '').length), 3);
+  const fitPx = box.width > 0 ? (box.width * 0.94) / (longest * 0.6) : 120;
+  const heightPx = box.height > 0 ? box.height * (sorted.length <= 3 ? 0.3 : 0.24) : 120;
+  const maxPx = Math.max(28, Math.min(fitPx, heightPx, 170));
+  const minPx = Math.max(13, Math.min(maxPx * 0.2, 30));
+  const crowdScale = sorted.length <= 3 ? 1 : sorted.length <= 6 ? 0.85 : sorted.length <= 10 ? 0.7 : sorted.length <= 20 ? 0.55 : 0.42;
+  const sizeOf = (count) => {
+    if (max === min) return maxPx * (sorted.length < 6 ? 0.72 : 0.45) * crowdScale;
+    return (minPx + (maxPx - minPx) * Math.pow((count - min) / (max - min), 0.7)) * crowdScale;
+  };
+  const colorOf = (word, index) => {
+    if (index === 0) return palette[0];
+    const base = palette[1 + (index % (palette.length - 1))];
+    return word.count >= max * 0.3 ? base : `${base}c8`;
+  };
 
   return (
     <div style={{
@@ -115,9 +103,46 @@ export default function LiveCloud({ data, showQr, theme }) {
         </div>
       </header>
 
-      {/* Cloud Box */}
+      {/* Cloud Box — flow layout: words can never overlap, and multi-word
+          answers (whiteSpace: nowrap) always stay together on one line */}
       <div ref={containerRef} style={{ position: 'relative', minHeight: 0 }}>
-        <canvas ref={canvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
+        {words.length > 0 && (
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              alignContent: 'center',
+              justifyContent: 'center',
+              gap: '0.12em 0.38em',
+              padding: '1vh 1vw',
+              overflow: 'hidden',
+              fontFamily: "'Bricolage Grotesque', 'Plus Jakarta Sans', sans-serif",
+              textAlign: 'center',
+            }}
+          >
+            {sorted.map((word, index) => (
+              <span
+                key={word.key || word.text}
+                title={`${word.text} · ${word.count}`}
+                style={{
+                  flex: 'none',
+                  whiteSpace: 'nowrap',
+                  lineHeight: 1.02,
+                  letterSpacing: '-0.02em',
+                  fontSize: `${sizeOf(word.count)}px`,
+                  fontWeight: word.count >= max * 0.6 ? 800 : word.count >= max * 0.3 ? 700 : 500,
+                  color: colorOf(word, index),
+                  transition: 'font-size 0.45s ease, color 0.45s ease',
+                }}
+              >
+                {word.text}
+              </span>
+            ))}
+          </div>
+        )}
 
         {words.length === 0 && (
           <div style={{

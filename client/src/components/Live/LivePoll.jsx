@@ -11,7 +11,11 @@ export default function LivePoll({ data, showQr }) {
 
   const n = options.length || 1;
   const per = Math.max(48, Math.min(100, 600 / n));
-  const fs = Math.max(16, Math.min(per * 0.32, 38));
+  // Long options (long words / unbroken strings) shrink the type a step,
+  // so they stay on screen instead of pushing the % column off the edge.
+  const longestOption = options.reduce((acc, o) => Math.max(acc, (o.text || '').length), 0);
+  const textScale = longestOption > 80 ? 0.55 : longestOption > 56 ? 0.68 : longestOption > 38 ? 0.8 : longestOption > 26 ? 0.9 : 1;
+  const fs = Math.max(14, Math.min(per * 0.32, 38) * textScale);
   const bh = Math.max(12, Math.min(per * 0.28, 42));
   const gap = Math.max(10, Math.min(per * 0.24, 36));
 
@@ -19,9 +23,12 @@ export default function LivePoll({ data, showQr }) {
     <div style={{
       position: 'fixed',
       inset: 0,
+      width: '100vw',
+      maxWidth: '100vw',
+      boxSizing: 'border-box',
       display: 'grid',
-      gridTemplateColumns: showQr ? '1fr auto' : '1fr',
-      gridTemplateRows: 'auto 1fr',
+      gridTemplateColumns: showQr ? 'minmax(0, 1fr) auto' : 'minmax(0, 1fr)',
+      gridTemplateRows: 'auto minmax(0, 1fr)',
       gap: '3vh 3vw',
       padding: '3.4vh 3.4vw',
       overflow: 'hidden'
@@ -41,7 +48,9 @@ export default function LivePoll({ data, showQr }) {
           lineHeight: 1.08,
           letterSpacing: '-0.025em',
           margin: 0,
-          maxWidth: '88%'
+          maxWidth: '88%',
+          minWidth: 0,
+          overflowWrap: 'anywhere'
         }}>
           {data?.question}
         </h1>
@@ -74,7 +83,11 @@ export default function LivePoll({ data, showQr }) {
         flexDirection: 'column',
         justifyContent: 'center',
         gap: `${gap}px`,
-        minHeight: 0
+        minHeight: 0,
+        minWidth: 0,
+        width: '100%',
+        maxWidth: '100%',
+        overflow: 'hidden'
       }}>
         {options.map((o, i) => {
           const c = COLORS[i % COLORS.length];
@@ -87,23 +100,28 @@ export default function LivePoll({ data, showQr }) {
               style={{
                 position: 'relative',
                 opacity: isDim ? 0.55 : 1,
-                transition: 'opacity .4s'
+                transition: 'opacity .4s',
+                minWidth: 0,
+                maxWidth: '100%'
               }}
             >
               <div style={{
                 display: 'flex',
-                alignItems: 'baseline',
+                alignItems: 'flex-start',
                 justifyContent: 'space-between',
                 gap: '2vw',
-                marginBottom: `${gap * 0.3}px`
+                marginBottom: `${gap * 0.3}px`,
+                minWidth: 0,
+                maxWidth: '100%'
               }}>
                 <div style={{
                   fontWeight: 800,
                   fontSize: `${fs}px`,
                   lineHeight: 1.15,
                   display: 'flex',
-                  alignItems: 'center',
+                  alignItems: 'flex-start',
                   gap: '.5em',
+                  flex: '1 1 auto',
                   minWidth: 0
                 }}>
                   <span style={{
@@ -120,9 +138,24 @@ export default function LivePoll({ data, showQr }) {
                   }}>
                     {String.fromCharCode(65 + i)}
                   </span>
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {o.text} {isLeader ? '👑' : ''}
+                  {/* Long / unbroken option text wraps in place (max 2 lines,
+                      breaks anywhere) — it can never push the % off screen */}
+                  <span
+                    title={o.text}
+                    style={{
+                      flex: '1 1 auto',
+                      minWidth: 0,
+                      display: '-webkit-box',
+                      WebkitBoxOrient: 'vertical',
+                      WebkitLineClamp: 2,
+                      overflow: 'hidden',
+                      overflowWrap: 'anywhere',
+                      wordBreak: 'break-word'
+                    }}
+                  >
+                    {o.text}
                   </span>
+                  {isLeader && <span style={{ flex: 'none' }}>👑</span>}
                 </div>
 
                 {!hiddenResults && (
@@ -131,7 +164,8 @@ export default function LivePoll({ data, showQr }) {
                     fontWeight: 800,
                     fontSize: `${fs * 1.25}px`,
                     whiteSpace: 'nowrap',
-                    fontVariantNumeric: 'tabular-nums'
+                    fontVariantNumeric: 'tabular-nums',
+                    flex: '0 0 auto'
                   }}>
                     <span>{Math.round(o.pct || 0)}%</span>
                     <small style={{
@@ -152,7 +186,11 @@ export default function LivePoll({ data, showQr }) {
                   height: `${bh}px`,
                   borderRadius: `${bh / 2}px`,
                   background: 'var(--track)',
-                  overflow: 'hidden'
+                  overflow: 'hidden',
+                  width: '100%',
+                  minWidth: 0,
+                  maxWidth: '100%',
+                  boxSizing: 'border-box'
                 }}>
                   <div style={{
                     height: '100%',
@@ -188,7 +226,8 @@ export default function LivePoll({ data, showQr }) {
         alignItems: 'center',
         justifyContent: 'center',
         gap: '2vh',
-        width: showQr ? 'clamp(240px, 24vw, 420px)' : 'auto'
+        minWidth: 0,
+        width: showQr ? 'clamp(200px, 24vw, 420px)' : 'auto'
       }}>
         {showQr && (
           <div style={{

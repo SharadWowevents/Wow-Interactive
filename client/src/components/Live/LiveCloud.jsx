@@ -156,7 +156,9 @@ export default function LiveCloud({ data, showQr, theme }) {
           lineHeight: 1.08,
           letterSpacing: '-0.025em',
           margin: 0,
-          maxWidth: '85%'
+          maxWidth: '85%',
+          minWidth: 0,
+          overflowWrap: 'anywhere'
         }}>
           {data?.question}
         </h1>

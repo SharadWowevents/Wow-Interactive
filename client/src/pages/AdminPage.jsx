@@ -14,6 +14,7 @@ import CreateQuestionForm from '../components/Admin/CreateQuestionForm';
 import QuestionCard from '../components/Admin/QuestionCard';
 import QrModal from '../components/Admin/QrModal';
 import EditModal from '../components/Admin/EditModal';
+import ChangePasswordModal from '../components/Admin/ChangePasswordModal';
 import Toast from '../components/Common/Toast';
 
 export default function AdminPage() {
@@ -23,6 +24,7 @@ export default function AdminPage() {
   const [questions, setQuestions] = useState([]);
   const [activeQrQuestion, setActiveQrQuestion] = useState(null);
   const [activeEditQuestion, setActiveEditQuestion] = useState(null);
+  const [isChangePwOpen, setIsChangePwOpen] = useState(false);
   const [toastMsg, setToastMsg] = useState('');
   const [isLoading, setIsLoading] = useState(true);
 
@@ -273,9 +275,14 @@ export default function AdminPage() {
             </p>
           </div>
         </div>
-        <button className="btn ghost" onClick={handleLogout}>
-          Sign out
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button className="btn small" onClick={() => setIsChangePwOpen(true)}>
+            🔒 Change password
+          </button>
+          <button className="btn ghost" onClick={handleLogout}>
+            Sign out
+          </button>
+        </div>
       </header>
 
       {/* Create Form */}
@@ -322,6 +329,12 @@ export default function AdminPage() {
           question={activeEditQuestion}
           onClose={() => setActiveEditQuestion(null)}
           onSave={handleEditSave}
+        />
+      )}
+      {isChangePwOpen && (
+        <ChangePasswordModal
+          onClose={() => setIsChangePwOpen(false)}
+          onSuccess={(msg) => showToast(msg)}
         />
       )}
 

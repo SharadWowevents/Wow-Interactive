@@ -52,6 +52,15 @@ export const checkAuth = async () => {
   }
 };
 
+export const changePassword = async (currentPassword, newPassword) => {
+  const data = await fetchApi('/change-password', {
+    method: 'POST',
+    body: { currentPassword, newPassword }
+  });
+  if (data.token) setToken(data.token);
+  return data;
+};
+
 // Admin Questions
 export const getQuestions = () => fetchApi('/questions');
 export const createQuestion = (data) => fetchApi('/questions', { method: 'POST', body: data });

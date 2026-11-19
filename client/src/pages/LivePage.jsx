@@ -47,13 +47,14 @@ export default function LivePage() {
     }
   }, []);
 
-  // Keyboard Shortcuts: Q, T, F
+  // Keyboard Shortcuts: Q, T, F, C
   useEffect(() => {
     const handleKeyDown = (e) => {
       const k = e.key.toLowerCase();
       if (k === 'q') toggleQr();
       if (k === 't') toggleTheme();
       if (k === 'f') toggleFullscreen();
+      if (k === 'c') window.dispatchEvent(new CustomEvent('livemap:fit'));
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
@@ -212,6 +213,7 @@ export default function LivePage() {
         theme={theme}
         onToggleTheme={toggleTheme}
         onToggleFullscreen={toggleFullscreen}
+        onFitCenter={() => window.dispatchEvent(new CustomEvent('livemap:fit'))}
         isMap={data?.type === 'map'}
         isReconnecting={isReconnecting}
       />

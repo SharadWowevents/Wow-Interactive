@@ -42,6 +42,10 @@ app.use('/api/questions', questionRoutes);
 app.use('/api/public', publicRoutes);
 app.get('/api/cities', publicController.getCities);
 app.get('/geo/countries.json', publicController.getCountriesGeoJson);
+app.get('/geo/countries-ind.json', publicController.getCountriesGeoJson);
+app.get('/api/geo/countries.json', publicController.getCountriesGeoJson);
+app.get('/api/geo/countries-ind.json', publicController.getCountriesGeoJson);
+app.get('/api/countries.json', publicController.getCountriesGeoJson);
 app.get('/healthz', (req, res) => res.send('ok'));
 
 // Serve React Client in Production

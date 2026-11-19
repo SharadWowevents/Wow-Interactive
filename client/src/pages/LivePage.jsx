@@ -60,6 +60,20 @@ export default function LivePage() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [toggleQr, toggleTheme, toggleFullscreen]);
 
+  // Day-wise rollover: if this screen stays on overnight, refetch exactly
+  // at midnight so it starts the new day fresh (server also pushes an
+  // update then — this is the belt-and-braces fallback).
+  useEffect(() => {
+    if (!data?.nextDayStart) return;
+    const delay = Math.max(1000, data.nextDayStart - Date.now() + 800);
+    const timer = setTimeout(async () => {
+      try {
+        setData(await getCloudData(id));
+      } catch (_) {}
+    }, delay);
+    return () => clearTimeout(timer);
+  }, [data?.nextDayStart, id]);
+
   // Real-Time WebSockets & Fallback SSE Stream Setup
   useEffect(() => {
     let es = null;
@@ -207,6 +221,35 @@ export default function LivePage() {
         ['--top']: isLight ? '#5b3df5' : '#ffd166'
       }}
     >
+      {data?.dayLabel && (
+        <div
+          title={`Showing only today's answers (${data.timezone || 'Asia/Kolkata'}). Resets at midnight.`}
+          style={{
+            position: 'fixed',
+            bottom: '10px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 650,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '7px',
+            padding: '6px 13px',
+            borderRadius: '999px',
+            background: 'var(--panel)',
+            border: '1px solid var(--panel-line)',
+            color: 'var(--fg2)',
+            fontWeight: 700,
+            fontSize: 'clamp(11px, 1vw, 14px)',
+            whiteSpace: 'nowrap',
+            pointerEvents: 'none',
+            backdropFilter: 'blur(6px)'
+          }}
+        >
+          <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#5fe3b4', flex: 'none' }} />
+          Today · {data.dayLabel}
+        </div>
+      )}
+
       <LiveControls
         showQr={showQr}
         onToggleQr={toggleQr}

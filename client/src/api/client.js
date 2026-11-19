@@ -67,6 +67,11 @@ export const createQuestion = (data) => fetchApi('/questions', { method: 'POST',
 export const updateQuestion = (id, data) => fetchApi(`/questions/${id}`, { method: 'PATCH', body: data });
 export const clearQuestion = (id) => fetchApi(`/questions/${id}/clear`, { method: 'POST' });
 export const deleteQuestion = (id) => fetchApi(`/questions/${id}`, { method: 'DELETE' });
+export const getExportDates = (id) => fetchApi(`/questions/${id}/export-dates`);
+export const exportCsvUrl = (id, from, to) =>
+  from && to
+    ? `/api/questions/${id}/export.csv?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
+    : `/api/questions/${id}/export.csv`;
 
 // Public Questions
 export const getPublicQuestion = (id) => fetchApi(`/public/questions/${id}`);

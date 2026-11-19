@@ -1,11 +1,25 @@
 const geo = require('./geo');
 const { tokens } = require('./textProcessing');
+const { effectiveCutoff, dayInfo } = require('./day');
+
+/**
+ * Day-wise fresh data: by default only today's responses are summarised
+ * (today = since midnight in DAY_TIMEZONE, or since the last manual
+ * Clear if that was later). Pass { allTime: true } for full history
+ * (e.g. CSV export).
+ */
+function visibleResponses(q, opts = {}) {
+  const all = q.responses || [];
+  if (opts.allTime) return all;
+  const cutoff = effectiveCutoff(q);
+  return all.filter(r => (r.t || 0) >= cutoff);
+}
 
 const TILE_URL = process.env.TILE_URL || '';
 const TILE_ATTRIBUTION = process.env.TILE_ATTRIBUTION || '';
 
-function cloudFor(q) {
-  const responses = q.responses || [];
+function cloudFor(q, opts = {}) {
+  const responses = visibleResponses(q, opts);
   const counts = new Map(); // key -> {text, count, forms}
   const hidden = new Set((q.hidden || []).map(h => h.toLowerCase()));
   const people = new Set();
@@ -40,12 +54,13 @@ function cloudFor(q) {
     mode: q.mode,
     total,
     participants: people.size,
-    words
+    words,
+    ...dayInfo(q)
   };
 }
 
-function mapFor(q) {
-  const responses = q.responses || [];
+function mapFor(q, opts = {}) {
+  const responses = visibleResponses(q, opts);
   const hidden = new Set((q.hidden || []).map(String));
   const byCity = new Map();
   const countries = new Set();
@@ -101,13 +116,14 @@ function mapFor(q) {
     totalKm: Math.round(totalKm),
     farthest,
     cities,
-    tiles: TILE_URL ? { url: TILE_URL, attribution: TILE_ATTRIBUTION } : null
+    tiles: TILE_URL ? { url: TILE_URL, attribution: TILE_ATTRIBUTION } : null,
+    ...dayInfo(q)
   };
 }
 
-function pollFor(q, full) {
+function pollFor(q, full, opts = {}) {
   const optionsList = q.options || [];
-  const responses = q.responses || [];
+  const responses = visibleResponses(q, opts);
   const counts = new Map(optionsList.map(o => [o.id, 0]));
   const people = new Set();
   let last = 0;
@@ -146,15 +162,18 @@ function pollFor(q, full) {
     participants: voters,
     votes: [...counts.values()].reduce((a, b) => a + b, 0),
     last,
-    options
+    options,
+    ...dayInfo(q)
   };
 }
 
-const summarize = (q, full = false) => {
+const summarize = (q, full = false, opts = {}) => {
+  // Allow summarize(q, { allTime: true }) as shorthand.
+  if (full && typeof full === 'object') { opts = full; full = false; }
   const type = q.type || 'cloud';
-  if (type === 'map') return mapFor(q);
-  if (type === 'poll') return pollFor(q, full);
-  return cloudFor(q);
+  if (type === 'map') return mapFor(q, opts);
+  if (type === 'poll') return pollFor(q, full, opts);
+  return cloudFor(q, opts);
 };
 
 const qType = q => (q.type === 'map' || q.type === 'poll' ? q.type : 'cloud');
@@ -164,5 +183,6 @@ module.exports = {
   mapFor,
   pollFor,
   summarize,
-  qType
+  qType,
+  visibleResponses
 };

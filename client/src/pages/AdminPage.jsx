@@ -15,6 +15,7 @@ import QuestionCard from '../components/Admin/QuestionCard';
 import QrModal from '../components/Admin/QrModal';
 import EditModal from '../components/Admin/EditModal';
 import ChangePasswordModal from '../components/Admin/ChangePasswordModal';
+import ExportCsvModal from '../components/Admin/ExportCsvModal';
 import Toast from '../components/Common/Toast';
 
 export default function AdminPage() {
@@ -23,6 +24,7 @@ export default function AdminPage() {
   const [loginErr, setLoginErr] = useState('');
   const [questions, setQuestions] = useState([]);
   const [activeQrQuestion, setActiveQrQuestion] = useState(null);
+  const [activeExportQuestion, setActiveExportQuestion] = useState(null);
   const [activeEditQuestion, setActiveEditQuestion] = useState(null);
   const [isChangePwOpen, setIsChangePwOpen] = useState(false);
   const [toastMsg, setToastMsg] = useState('');
@@ -315,6 +317,7 @@ export default function AdminPage() {
               onHideWord={handleHideWord}
               onUnhideWord={handleUnhideWord}
               onCopy={handleCopyLink}
+              onExport={setActiveExportQuestion}
             />
           ))
         )}
@@ -323,6 +326,9 @@ export default function AdminPage() {
       {/* Modals */}
       {activeQrQuestion && (
         <QrModal question={activeQrQuestion} onClose={() => setActiveQrQuestion(null)} />
+      )}
+      {activeExportQuestion && (
+        <ExportCsvModal question={activeExportQuestion} onClose={() => setActiveExportQuestion(null)} />
       )}
       {activeEditQuestion && (
         <EditModal

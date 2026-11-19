@@ -1,4 +1,22 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+
+// Stable per-word random source: positions look random, but the same
+// answer always gets the same spots, so the cloud doesn't jump around
+// on every live update — only its size / layer changes with its count.
+function seededRandom(text) {
+  let seed = 2166136261;
+  for (let i = 0; i < text.length; i++) {
+    seed ^= text.charCodeAt(i);
+    seed = Math.imul(seed, 16777619);
+  }
+  return () => {
+    seed += 0x6d2b79f5;
+    let t = seed;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
 
 const DARK = ['#ffd166', '#ff6b9a', '#7cc8ff', '#9d8bff', '#5fe3b4', '#ffa36c', '#f9f871', '#c4b5ff', '#ff8fab', '#8ee3f5'];
 const LIGHT = ['#5b3df5', '#e8417a', '#0b8aa8', '#d9480f', '#11865b', '#7b2cbf', '#c2255c', '#1c7ed6', '#e67700', '#2b8a3e'];
@@ -15,8 +33,9 @@ export default function LiveCloud({ data, showQr, theme }) {
   // Measure the cloud area (the old canvas word-cloud guessed word sizes
   // before the display font loaded, so words landed on top of each other —
   // e.g. "Divya" + "Kumar" in the same spot, and "Kumar" drifting away
-  // from "Deepak Kumar"). The cloud below is laid out with normal flow,
-  // which can never overlap, and every answer stays on one line.
+  // from "Deepak Kumar"). Placement below is computed in the browser with
+  // real sizes: scattered randomly, biggest answers placed first, and
+  // every answer stays on one line.
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -55,6 +74,68 @@ export default function LiveCloud({ data, showQr, theme }) {
     const base = palette[1 + (index % (palette.length - 1))];
     return word.count >= max * 0.3 ? base : `${base}c8`;
   };
+
+  // Random scattered placement (biggest answers are placed first).
+  // Most-repeated answers get the top/centre of the screen and the
+  // highest z-index, so they always render in front of the rest.
+  const placements = useMemo(() => {
+    const W = Math.max(box.width, 640);
+    const H = Math.max(box.height, 360);
+    const placed = [];
+    return sorted.map((word, index) => {
+      let fontSize = sizeOf(word.count);
+      let estW = Math.max(24, (word.text || '').length * fontSize * 0.58);
+      if (estW > W * 0.94) {
+        fontSize *= (W * 0.94) / estW;
+        estW = W * 0.94;
+      }
+      const estH = fontSize * 1.1;
+      const rng = seededRandom(word.text || String(index));
+      const rotation = index < 2 ? 0 : Math.round((rng() * 8 - 4) * 10) / 10;
+
+      // Preferred spot: #1 sits top-centre, next ranks near the centre,
+      // everyone else gets their own random target across the screen.
+      const prefX = index === 0 ? W * 0.5 : index < 3 ? W * (0.32 + rng() * 0.36) : W * (0.14 + rng() * 0.72);
+      const prefY = index === 0 ? H * 0.36 : index < 3 ? H * (0.26 + rng() * 0.3) : H * (0.12 + rng() * 0.72);
+
+      let best = null;
+      for (let attempt = 0; attempt < 180; attempt++) {
+        const left = 8 + rng() * Math.max(1, W - estW - 16);
+        const topEdge = 6 + rng() * Math.max(1, H - estH - 12);
+        const rect = { left, top: topEdge, right: left + estW, bottom: topEdge + estH };
+        let overlap = 0;
+        for (const other of placed) {
+          const ox = Math.max(0, Math.min(rect.right, other.right + 10) - Math.max(rect.left, other.left - 10));
+          const oy = Math.max(0, Math.min(rect.bottom, other.bottom + 6) - Math.max(rect.top, other.top - 6));
+          overlap += ox * oy;
+        }
+        const dx = (left + estW / 2 - prefX) / W;
+        const dy = (topEdge + estH / 2 - prefY) / H;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const score = overlap * 20 + dist * (index === 0 ? 9000 : index < 3 ? 3500 : 900);
+        if (!best || score < best.score) best = { ...rect, score, overlap };
+        // Lower ranks: settle for the first roomy random spot (keeps the scatter)
+        if (overlap === 0 && attempt >= 28 && index >= 3) {
+          best = { ...rect, score, overlap };
+          break;
+        }
+        if (overlap === 0 && dist < 0.16 && index < 3) break;
+      }
+
+      placed.push(best);
+      return {
+        word,
+        index,
+        fontSize,
+        rotation,
+        xPct: ((best.left + estW / 2) / W) * 100,
+        yPct: ((best.top + estH / 2) / H) * 100,
+        // Most-repeated = front layer (higher count / rank renders on top)
+        zIndex: 100 + (sorted.length - index) * 10,
+      };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sorted.map((w) => `${w.text}:${w.count}`).join('|'), box.width, box.height]);
 
   return (
     <div style={{
@@ -103,39 +184,38 @@ export default function LiveCloud({ data, showQr, theme }) {
         </div>
       </header>
 
-      {/* Cloud Box — flow layout: words can never overlap, and multi-word
-          answers (whiteSpace: nowrap) always stay together on one line */}
+      {/* Cloud Box — randomly scattered across the screen (stable per word).
+          Multi-word answers (whiteSpace: nowrap) always stay together, and
+          the most-repeated answers are biggest, top-centre and frontmost. */}
       <div ref={containerRef} style={{ position: 'relative', minHeight: 0 }}>
         {words.length > 0 && (
           <div
             style={{
               position: 'absolute',
               inset: 0,
-              display: 'flex',
-              flexWrap: 'wrap',
-              alignItems: 'center',
-              alignContent: 'center',
-              justifyContent: 'center',
-              gap: '0.12em 0.38em',
-              padding: '1vh 1vw',
               overflow: 'hidden',
               fontFamily: "'Bricolage Grotesque', 'Plus Jakarta Sans', sans-serif",
-              textAlign: 'center',
             }}
           >
-            {sorted.map((word, index) => (
+            {placements.map(({ word, index, fontSize, rotation, xPct, yPct, zIndex }) => (
               <span
                 key={word.key || word.text}
                 title={`${word.text} · ${word.count}`}
                 style={{
-                  flex: 'none',
+                  position: 'absolute',
+                  left: `${xPct}%`,
+                  top: `${yPct}%`,
+                  transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
+                  zIndex,
                   whiteSpace: 'nowrap',
                   lineHeight: 1.02,
                   letterSpacing: '-0.02em',
-                  fontSize: `${sizeOf(word.count)}px`,
+                  fontSize: `${fontSize}px`,
                   fontWeight: word.count >= max * 0.6 ? 800 : word.count >= max * 0.3 ? 700 : 500,
                   color: colorOf(word, index),
-                  transition: 'font-size 0.45s ease, color 0.45s ease',
+                  textShadow: index < 3 ? '0 6px 28px rgba(0,0,0,0.45)' : 'none',
+                  transition: 'left 0.6s ease, top 0.6s ease, font-size 0.45s ease, color 0.45s ease',
+                  willChange: 'left, top, font-size',
                 }}
               >
                 {word.text}

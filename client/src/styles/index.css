@@ -253,3 +253,92 @@ label.field {
   from { transform: scale(.95); opacity: 0; }
   to { transform: scale(1); opacity: 1; }
 }
+
+/* Leaflet & Live Map Styles */
+.leaflet-container {
+  background: var(--sea, #0a0918) !important;
+  font-family: var(--font);
+}
+.country {
+  transition: fill .6s ease;
+}
+.city-dot {
+  filter: drop-shadow(0 0 6px var(--dot, #ff5c8a));
+  transition: r .5s ease;
+}
+.city-dot.top {
+  filter: drop-shadow(0 0 10px var(--top, #ffd166));
+}
+.arc {
+  stroke-dasharray: 6 8;
+  animation: mapArcDash 1.6s linear infinite;
+}
+@keyframes mapArcDash {
+  to { stroke-dashoffset: -28; }
+}
+.lbl.leaflet-tooltip {
+  background: var(--panel);
+  border: 1px solid var(--panel-line);
+  color: var(--fg);
+  font-family: var(--font);
+  font-weight: 800;
+  border-radius: 10px;
+  padding: 3px 9px;
+  box-shadow: none;
+  font-size: 14px;
+  backdrop-filter: blur(6px);
+}
+.lbl.leaflet-tooltip b {
+  color: var(--top, #ffd166);
+  margin-left: 5px;
+}
+.lbl.leaflet-tooltip::before {
+  display: none !important;
+}
+.pulse {
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+  border-radius: 50%;
+  border: 3px solid var(--top, #ffd166);
+  animation: mapPulse 2.2s ease-out forwards;
+}
+@keyframes mapPulse {
+  0% { transform: scale(.4); opacity: 1; }
+  100% { transform: scale(6); opacity: 0; }
+}
+.venue {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  transform: translate(-13px, -15px);
+}
+.venue .star {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--top, #ffd166);
+  color: #17151f;
+  font-size: 15px;
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--top, #ffd166) 30%, transparent), 0 0 24px var(--top, #ffd166);
+}
+.venue .vn {
+  background: var(--panel);
+  border: 1px solid var(--panel-line);
+  color: var(--fg);
+  font-weight: 800;
+  font-size: 15px;
+  padding: 3px 10px;
+  border-radius: 10px;
+}
+.leaflet-control-attribution {
+  background: transparent !important;
+  color: var(--fg2, rgba(255,255,255,.62)) !important;
+  font-size: 10px !important;
+}
+.leaflet-control-attribution a {
+  color: var(--fg2, rgba(255,255,255,.62)) !important;
+}

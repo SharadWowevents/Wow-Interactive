@@ -1,72 +1,141 @@
-import React, { useEffect, useRef } from 'react';
-import WordCloud from 'wordcloud';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+
+// Stable per-word random source: positions look random, but the same
+// answer always gets the same spots, so the cloud doesn't jump around
+// on every live update — only its size / layer changes with its count.
+function seededRandom(text) {
+  let seed = 2166136261;
+  for (let i = 0; i < text.length; i++) {
+    seed ^= text.charCodeAt(i);
+    seed = Math.imul(seed, 16777619);
+  }
+  return () => {
+    seed += 0x6d2b79f5;
+    let t = seed;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
 
 const DARK = ['#ffd166', '#ff6b9a', '#7cc8ff', '#9d8bff', '#5fe3b4', '#ffa36c', '#f9f871', '#c4b5ff', '#ff8fab', '#8ee3f5'];
 const LIGHT = ['#5b3df5', '#e8417a', '#0b8aa8', '#d9480f', '#11865b', '#7b2cbf', '#c2255c', '#1c7ed6', '#e67700', '#2b8a3e'];
 
 export default function LiveCloud({ data, showQr, theme }) {
-  const canvasRef = useRef(null);
   const containerRef = useRef(null);
+  const [box, setBox] = useState({ width: 0, height: 0 });
 
   const words = data?.words || [];
   const top = words.slice(0, 3);
   const answerUrl = `${window.location.origin}/q/${data?.id}`;
   const displayUrl = answerUrl.replace(/^https?:\/\//, '');
 
+  // Measure the cloud area (the old canvas word-cloud guessed word sizes
+  // before the display font loaded, so words landed on top of each other —
+  // e.g. "Divya" + "Kumar" in the same spot, and "Kumar" drifting away
+  // from "Deepak Kumar"). Placement below is computed in the browser with
+  // real sizes: scattered randomly, biggest answers placed first, and
+  // every answer stays on one line.
   useEffect(() => {
-    if (!canvasRef.current || !containerRef.current) return;
-    const canvas = canvasRef.current;
-    const box = containerRef.current.getBoundingClientRect();
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const el = containerRef.current;
+    if (!el) return;
+    const update = () => {
+      const rect = el.getBoundingClientRect();
+      setBox({ width: rect.width, height: rect.height });
+    };
+    update();
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null;
+    if (observer) observer.observe(el);
+    window.addEventListener('resize', update);
+    return () => {
+      if (observer) observer.disconnect();
+      window.removeEventListener('resize', update);
+    };
+  }, []);
 
-    canvas.width = Math.max(1, Math.round(box.width * dpr));
-    canvas.height = Math.max(1, Math.round(box.height * dpr));
+  const palette = theme === 'light' ? LIGHT : DARK;
+  const sorted = [...words].sort((a, b) => b.count - a.count);
+  const max = sorted.length ? sorted[0].count : 0;
+  const min = sorted.length ? sorted[sorted.length - 1].count : 0;
+  // Longest answer overall decides the cap, so a long full name
+  // ("Deepak Kumar") always fits on one line instead of being split.
+  const longest = sorted.reduce((acc, w) => Math.max(acc, (w.text || '').length), 3);
+  const fitPx = box.width > 0 ? (box.width * 0.94) / (longest * 0.6) : 120;
+  const heightPx = box.height > 0 ? box.height * (sorted.length <= 3 ? 0.3 : 0.24) : 120;
+  const maxPx = Math.max(28, Math.min(fitPx, heightPx, 170));
+  const minPx = Math.max(13, Math.min(maxPx * 0.2, 30));
+  const crowdScale = sorted.length <= 3 ? 1 : sorted.length <= 6 ? 0.85 : sorted.length <= 10 ? 0.7 : sorted.length <= 20 ? 0.55 : 0.42;
+  const sizeOf = (count) => {
+    if (max === min) return maxPx * (sorted.length < 6 ? 0.72 : 0.45) * crowdScale;
+    return (minPx + (maxPx - minPx) * Math.pow((count - min) / (max - min), 0.7)) * crowdScale;
+  };
+  const colorOf = (word, index) => {
+    if (index === 0) return palette[0];
+    const base = palette[1 + (index % (palette.length - 1))];
+    return word.count >= max * 0.3 ? base : `${base}c8`;
+  };
 
-    if (!words.length) {
-      const ctx = canvas.getContext('2d');
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      return;
-    }
+  // Random scattered placement (biggest answers are placed first).
+  // Most-repeated answers get the top/centre of the screen and the
+  // highest z-index, so they always render in front of the rest.
+  const placements = useMemo(() => {
+    const W = Math.max(box.width, 640);
+    const H = Math.max(box.height, 360);
+    const placed = [];
+    return sorted.map((word, index) => {
+      let fontSize = sizeOf(word.count);
+      let estW = Math.max(24, (word.text || '').length * fontSize * 0.58);
+      if (estW > W * 0.94) {
+        fontSize *= (W * 0.94) / estW;
+        estW = W * 0.94;
+      }
+      const estH = fontSize * 1.1;
+      const rng = seededRandom(word.text || String(index));
+      const rotation = index < 2 ? 0 : Math.round((rng() * 8 - 4) * 10) / 10;
 
-    const max = words[0].count;
-    const min = words[words.length - 1].count;
-    const longest = Math.max(...words.slice(0, 3).map(w => w.text.length), 3);
-    const maxPx = Math.min(box.height * 0.28, (box.width * 0.9) / (longest * 0.58));
-    const minPx = Math.max(14, Math.min(maxPx * 0.16, 34));
-    const few = words.length < 6;
-    const sizeOf = c => (max === min ? (few ? maxPx * 0.75 : maxPx * 0.45) : minPx + (maxPx - minPx) * Math.pow((c - min) / (max - min), 0.7));
-    const palette = theme === 'light' ? LIGHT : DARK;
-    const rankOf = new Map(words.map((w, i) => [w.text, i]));
+      // Preferred spot: #1 sits top-centre, next ranks near the centre,
+      // everyone else gets their own random target across the screen.
+      const prefX = index === 0 ? W * 0.5 : index < 3 ? W * (0.32 + rng() * 0.36) : W * (0.14 + rng() * 0.72);
+      const prefY = index === 0 ? H * 0.36 : index < 3 ? H * (0.26 + rng() * 0.3) : H * (0.12 + rng() * 0.72);
 
-    try {
-      WordCloud.stop && WordCloud.stop();
-      WordCloud(canvas, {
-        list: words.map(w => [w.text, w.count]),
-        weightFactor: c => sizeOf(c) * dpr,
-        fontFamily: "'Bricolage Grotesque', 'Plus Jakarta Sans', sans-serif",
-        fontWeight: (word, weight) => (weight >= max * 0.6 ? 800 : weight >= max * 0.3 ? 700 : 500),
-        color: (word, weight) => {
-          const r = rankOf.get(word) ?? 9;
-          if (r === 0) return palette[0];
-          const a = weight >= max * 0.3 ? 1 : 0.78;
-          const c = palette[1 + (r % (palette.length - 1))];
-          return a === 1 ? c : c + 'c8';
-        },
-        backgroundColor: 'rgba(0,0,0,0)',
-        gridSize: Math.round(8 * dpr),
-        rotateRatio: 0,
-        shuffle: false,
-        shrinkToFit: true,
-        drawOutOfBound: false,
-        origin: [canvas.width / 2, canvas.height / 2],
-        ellipticity: Math.min(1, box.height / box.width * 1.25),
-        wait: 0,
-        clearCanvas: true
-      });
-    } catch (e) {
-      console.error('WordCloud render error', e);
-    }
-  }, [words, theme]);
+      let best = null;
+      for (let attempt = 0; attempt < 180; attempt++) {
+        const left = 8 + rng() * Math.max(1, W - estW - 16);
+        const topEdge = 6 + rng() * Math.max(1, H - estH - 12);
+        const rect = { left, top: topEdge, right: left + estW, bottom: topEdge + estH };
+        let overlap = 0;
+        for (const other of placed) {
+          const ox = Math.max(0, Math.min(rect.right, other.right + 10) - Math.max(rect.left, other.left - 10));
+          const oy = Math.max(0, Math.min(rect.bottom, other.bottom + 6) - Math.max(rect.top, other.top - 6));
+          overlap += ox * oy;
+        }
+        const dx = (left + estW / 2 - prefX) / W;
+        const dy = (topEdge + estH / 2 - prefY) / H;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const score = overlap * 20 + dist * (index === 0 ? 9000 : index < 3 ? 3500 : 900);
+        if (!best || score < best.score) best = { ...rect, score, overlap };
+        // Lower ranks: settle for the first roomy random spot (keeps the scatter)
+        if (overlap === 0 && attempt >= 28 && index >= 3) {
+          best = { ...rect, score, overlap };
+          break;
+        }
+        if (overlap === 0 && dist < 0.16 && index < 3) break;
+      }
+
+      placed.push(best);
+      return {
+        word,
+        index,
+        fontSize,
+        rotation,
+        xPct: ((best.left + estW / 2) / W) * 100,
+        yPct: ((best.top + estH / 2) / H) * 100,
+        // Most-repeated = front layer (higher count / rank renders on top)
+        zIndex: 100 + (sorted.length - index) * 10,
+      };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sorted.map((w) => `${w.text}:${w.count}`).join('|'), box.width, box.height]);
 
   return (
     <div style={{
@@ -87,7 +156,9 @@ export default function LiveCloud({ data, showQr, theme }) {
           lineHeight: 1.08,
           letterSpacing: '-0.025em',
           margin: 0,
-          maxWidth: '85%'
+          maxWidth: '85%',
+          minWidth: 0,
+          overflowWrap: 'anywhere'
         }}>
           {data?.question}
         </h1>
@@ -115,9 +186,45 @@ export default function LiveCloud({ data, showQr, theme }) {
         </div>
       </header>
 
-      {/* Cloud Box */}
+      {/* Cloud Box — randomly scattered across the screen (stable per word).
+          Multi-word answers (whiteSpace: nowrap) always stay together, and
+          the most-repeated answers are biggest, top-centre and frontmost. */}
       <div ref={containerRef} style={{ position: 'relative', minHeight: 0 }}>
-        <canvas ref={canvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
+        {words.length > 0 && (
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              overflow: 'hidden',
+              fontFamily: "'Bricolage Grotesque', 'Plus Jakarta Sans', sans-serif",
+            }}
+          >
+            {placements.map(({ word, index, fontSize, rotation, xPct, yPct, zIndex }) => (
+              <span
+                key={word.key || word.text}
+                title={`${word.text} · ${word.count}`}
+                style={{
+                  position: 'absolute',
+                  left: `${xPct}%`,
+                  top: `${yPct}%`,
+                  transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
+                  zIndex,
+                  whiteSpace: 'nowrap',
+                  lineHeight: 1.02,
+                  letterSpacing: '-0.02em',
+                  fontSize: `${fontSize}px`,
+                  fontWeight: word.count >= max * 0.6 ? 800 : word.count >= max * 0.3 ? 700 : 500,
+                  color: colorOf(word, index),
+                  textShadow: index < 3 ? '0 6px 28px rgba(0,0,0,0.45)' : 'none',
+                  transition: 'left 0.6s ease, top 0.6s ease, font-size 0.45s ease, color 0.45s ease',
+                  willChange: 'left, top, font-size',
+                }}
+              >
+                {word.text}
+              </span>
+            ))}
+          </div>
+        )}
 
         {words.length === 0 && (
           <div style={{

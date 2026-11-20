@@ -108,8 +108,8 @@ export default function PollAnswer({ question, mine, selectedChoices, onVote, on
                   const isMine = selected.has(o.id) || selectedChoices?.includes(o.id);
                   return (
                     <div key={o.id} style={{ display: 'grid', gap: '5px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontWeight: 700, fontSize: '15px' }}>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontWeight: 700, fontSize: '15px', gap: '10px', minWidth: 0 }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                           {o.text}
                           {isMine && (
                             <span style={{ color: '#8ff0c9', fontSize: '12px', fontWeight: 800, background: 'rgba(95,227,180,.15)', padding: '2px 8px', borderRadius: '6px' }}>
@@ -192,7 +192,7 @@ export default function PollAnswer({ question, mine, selectedChoices, onVote, on
               }}>
                 {isChecked ? '✓' : ''}
               </span>
-              <span>{o.text}</span>
+              <span style={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{o.text}</span>
             </button>
           );
         })}

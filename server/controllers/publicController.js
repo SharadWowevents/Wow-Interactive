@@ -3,6 +3,7 @@ const Question = require('../models/Question');
 const geo = require('../utils/geo');
 const { MAX_ANSWER_LEN, cleanAnswer, isBlocked } = require('../utils/textProcessing');
 const { summarize, qType } = require('../utils/summarize');
+const { effectiveCutoff, dayLabel, DAY_TIMEZONE } = require('../utils/day');
 const { addSubscriber, broadcast } = require('../utils/sse');
 const { broadcastQuestionUpdate } = require('../utils/websocket');
 
@@ -24,7 +25,12 @@ exports.getPublicQuestion = async (req, res) => {
       mode: q.mode,
       maxPerPerson: q.maxPerPerson,
       maxLength: MAX_ANSWER_LEN,
-      resetAt: q.resetAt || 0
+      // Effective reset = last manual Clear OR today's midnight (whichever
+      // is later). The phone page keys its "your answers" storage by this,
+      // so every new day participants can answer again automatically.
+      resetAt: effectiveCutoff(q),
+      dayLabel: dayLabel(),
+      timezone: DAY_TIMEZONE
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -49,13 +55,17 @@ exports.submitAnswer = async (req, res) => {
     hits.push(now);
     ipHits.set(ip, hits);
 
+    // Day-wise: yesterday's answers don't count towards today's limits
+    // and aren't replaced by today's answer (history stays in the DB).
+    const cutoff = effectiveCutoff(q, now);
+
     if (q.type === 'poll') {
       const valid = new Set((q.options || []).map(o => o.id));
       const choices = [...new Set((Array.isArray(req.body.choices) ? req.body.choices : []).map(String))].filter(c => valid.has(c));
       if (!choices.length) return res.status(400).json({ error: 'Pick an option first.' });
       if (!q.multi && choices.length > 1) return res.status(400).json({ error: 'Pick just one option.' });
 
-      const prev = q.responses.findIndex(r => r.pid === pid);
+      const prev = q.responses.findIndex(r => r.pid === pid && (r.t || 0) >= cutoff);
       if (prev >= 0) q.responses.splice(prev, 1);
 
       const optionMap = new Map((q.options || []).map(o => [o.id, o.text]));
@@ -67,7 +77,7 @@ exports.submitAnswer = async (req, res) => {
       });
 
       await q.save();
-      const meta = { id: q.id, open: q.open, showResults: q.showResults, resetAt: q.resetAt, options: q.options };
+      const meta = { id: q.id, open: q.open, showResults: q.showResults, resetAt: effectiveCutoff(q), options: q.options };
       broadcast(q.id, Question);
       broadcastQuestionUpdate(q.id, summarize(q), meta);
       return res.json({ ok: true, used: 1, maxPerPerson: 1, choices, changed: prev >= 0 });
@@ -77,7 +87,7 @@ exports.submitAnswer = async (req, res) => {
       const city = geo.get(req.body.cityId);
       if (!city) return res.status(400).json({ error: 'Pick your city from the list.' });
 
-      const prev = q.responses.findIndex(r => r.pid === pid);
+      const prev = q.responses.findIndex(r => r.pid === pid && (r.t || 0) >= cutoff);
       const entry = {
         t: now,
         pid,
@@ -98,7 +108,7 @@ exports.submitAnswer = async (req, res) => {
       q.responses.push(entry);
 
       await q.save();
-      const meta = { id: q.id, open: q.open, showResults: q.showResults, resetAt: q.resetAt };
+      const meta = { id: q.id, open: q.open, showResults: q.showResults, resetAt: effectiveCutoff(q) };
       broadcast(q.id, Question);
       broadcastQuestionUpdate(q.id, summarize(q), meta);
       return res.json({ ok: true, used: 1, maxPerPerson: 1, city: entry.city, changed: prev >= 0 });
@@ -108,7 +118,7 @@ exports.submitAnswer = async (req, res) => {
     const text = cleanAnswer(req.body.text);
     if (!text) return res.status(400).json({ error: 'Type an answer first.' });
 
-    const mine = q.responses.filter(r => r.pid === pid);
+    const mine = q.responses.filter(r => r.pid === pid && (r.t || 0) >= cutoff);
     if (mine.length >= q.maxPerPerson) {
       return res.status(403).json({
         error: `You've already sent ${q.maxPerPerson} answer${q.maxPerPerson > 1 ? 's' : ''}. Thank you!`
@@ -123,7 +133,7 @@ exports.submitAnswer = async (req, res) => {
     });
 
     await q.save();
-    const meta = { id: q.id, open: q.open, showResults: q.showResults, resetAt: q.resetAt };
+    const meta = { id: q.id, open: q.open, showResults: q.showResults, resetAt: effectiveCutoff(q) };
     broadcast(q.id, Question);
     broadcastQuestionUpdate(q.id, summarize(q), meta);
     res.json({ ok: true, used: mine.length + 1, maxPerPerson: q.maxPerPerson });

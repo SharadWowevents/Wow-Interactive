@@ -4,6 +4,7 @@ const Question = require('../models/Question');
 const geo = require('../utils/geo');
 const { newId } = require('../utils/textProcessing');
 const { summarize, qType, pollFor } = require('../utils/summarize');
+const { effectiveCutoff, dayKey, labelForDayKey, rangeForDayKeys, DAY_TIMEZONE } = require('../utils/day');
 const { broadcast } = require('../utils/sse');
 const { broadcastQuestionUpdate, broadcastAdminUpdate, broadcastQuestionDeleted } = require('../utils/websocket');
 
@@ -89,7 +90,7 @@ exports.getQuestions = async (req, res) => {
         total: c.total,
         participants: c.participants,
         countries: isMap ? c.countries : undefined,
-        blocked: (q.responses || []).filter(r => r.blocked).length,
+        blocked: (q.responses || []).filter(r => r.blocked && (r.t || 0) >= effectiveCutoff(q)).length,
         top: isPoll
           ? c.options.map(o => ({ text: o.text, key: o.id, count: o.count, pct: o.pct, leader: o.leader }))
           : isMap
@@ -163,7 +164,7 @@ exports.updateQuestion = async (req, res) => {
     if (err) return res.status(400).json({ error: err });
 
     await q.save();
-    const meta = { id: q.id, open: q.open, showResults: q.showResults, resetAt: q.resetAt, text: q.text, options: q.options };
+    const meta = { id: q.id, open: q.open, showResults: q.showResults, resetAt: effectiveCutoff(q), text: q.text, options: q.options };
     broadcast(q.id, Question);
     broadcastQuestionUpdate(q.id, summarize(q), meta);
     res.json({ ok: true });
@@ -183,7 +184,7 @@ exports.clearQuestion = async (req, res) => {
     q.resetAt = Date.now();
     await q.save();
 
-    const meta = { id: q.id, open: q.open, showResults: q.showResults, resetAt: q.resetAt, text: q.text, options: q.options };
+    const meta = { id: q.id, open: q.open, showResults: q.showResults, resetAt: effectiveCutoff(q), text: q.text, options: q.options };
     broadcast(q.id, Question);
     broadcastQuestionUpdate(q.id, summarize(q), meta);
     res.json({ ok: true });
@@ -205,10 +206,56 @@ exports.deleteQuestion = async (req, res) => {
   }
 };
 
+/**
+ * Dates that actually have answers — used by the Export CSV calendar.
+ * Future dates (and dates with no answers) are never returned, so the
+ * calendar can disable them.
+ */
+exports.getExportDates = async (req, res) => {
+  try {
+    const q = await Question.findOne({ id: req.params.id }).lean();
+    if (!q) return res.status(404).json({ error: 'Question not found' });
+
+    const counts = new Map(); // dayKey -> count
+    for (const r of q.responses || []) {
+      if (!r.t) continue;
+      const k = dayKey(r.t);
+      counts.set(k, (counts.get(k) || 0) + 1);
+    }
+
+    const dates = [...counts.entries()]
+      .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+      .map(([date, count]) => ({ date, label: labelForDayKey(date), count }));
+
+    res.json({
+      timezone: DAY_TIMEZONE,
+      today: dayKey(),
+      total: dates.reduce((a, d) => a + d.count, 0),
+      dates
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
 exports.exportCsv = async (req, res) => {
   try {
     const q = await Question.findOne({ id: req.params.id }).lean();
     if (!q) return res.status(404).json({ error: 'Question not found' });
+
+    // Optional date range: ?from=2026-11-18&to=2026-11-19 (inclusive,
+    // in DAY_TIMEZONE). No range = all data (old behaviour).
+    const { from, to } = req.query;
+    let responses = q.responses || [];
+    let rangeSuffix = '';
+    if (from || to) {
+      const range = rangeForDayKeys(from, to);
+      if (!range) {
+        return res.status(400).json({ error: 'Invalid date range. Pick dates up to today — future dates have no data to export.' });
+      }
+      responses = responses.filter(r => (r.t || 0) >= range.fromMs && (r.t || 0) < range.toMs);
+      rangeSuffix = from === to ? `_${from}` : `_${from}_to_${to}`;
+    }
 
     const esc = s => '"' + String(s).replace(/"/g, '""') + '"';
     let rows;
@@ -216,14 +263,14 @@ exports.exportCsv = async (req, res) => {
     if (q.type === 'poll') {
       const name = new Map((q.options || []).map(o => [o.id, o.text]));
       rows = [['time', 'participant', 'answer'].join(',')];
-      for (const r of q.responses || []) {
+      for (const r of responses) {
         rows.push([
           new Date(r.t).toISOString(),
           r.pid.slice(0, 8),
           esc((r.choices || []).map(c => name.get(c) || '(removed option)').join('; '))
         ].join(','));
       }
-      const p = pollFor(q, true);
+      const p = pollFor({ ...q, responses }, true, { allTime: true });
       rows.push('', 'summary,votes,percent_of_voters');
       for (const o of p.options) {
         rows.push([esc(o.text), o.count, o.pct].join(','));
@@ -232,7 +279,7 @@ exports.exportCsv = async (req, res) => {
     } else if (q.type === 'map') {
       rows = [['time', 'participant', 'city', 'state', 'country', 'latitude', 'longitude']
         .concat(q.venue ? ['km_to_event'] : []).join(',')];
-      for (const r of q.responses || []) {
+      for (const r of responses) {
         const c = r.city || {};
         rows.push([
           new Date(r.t).toISOString(),
@@ -246,7 +293,7 @@ exports.exportCsv = async (req, res) => {
       }
     } else {
       rows = [['time', 'participant', 'answer', 'filtered'].join(',')];
-      for (const r of q.responses || []) {
+      for (const r of responses) {
         rows.push([
           new Date(r.t).toISOString(),
           r.pid.slice(0, 8),
@@ -268,7 +315,9 @@ exports.exportCsv = async (req, res) => {
       .replace(/\s+/g, '_')
       .slice(0, 60);
 
-    const filename = `${sanitizedTitle || 'answers'}_${dateStr}_${timeStr}.csv`;
+    const filename = rangeSuffix
+      ? `${sanitizedTitle || 'answers'}${rangeSuffix}.csv`
+      : `${sanitizedTitle || 'answers'}_${dateStr}_${timeStr}.csv`;
     const safeAscii = filename.replace(/[^\x20-\x7E]/g, '_').replace(/"/g, '');
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');

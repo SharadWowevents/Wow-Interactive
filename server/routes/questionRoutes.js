@@ -13,6 +13,7 @@ router.post('/', requireAdmin, questionController.createQuestion);
 router.patch('/:id', requireAdmin, questionController.updateQuestion);
 router.post('/:id/clear', requireAdmin, questionController.clearQuestion);
 router.delete('/:id', requireAdmin, questionController.deleteQuestion);
+router.get('/:id/export-dates', requireAdmin, questionController.getExportDates);
 router.get('/:id/export.csv', requireAdmin, questionController.exportCsv);
 
 module.exports = router;

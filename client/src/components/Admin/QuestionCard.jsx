@@ -10,7 +10,8 @@ export default function QuestionCard({
   onDelete,
   onHideWord,
   onUnhideWord,
-  onCopy
+  onCopy,
+  onExport
 }) {
   const isMap = question.type === 'map';
   const isPoll = question.type === 'poll';
@@ -154,9 +155,9 @@ export default function QuestionCard({
           <button className="btn" onClick={() => onEdit(question)}>
             Edit
           </button>
-          <a className="btn" href={`/api/questions/${question.id}/export.csv`}>
+          <button className="btn" onClick={() => onExport(question)}>
             Export CSV
-          </a>
+          </button>
           <button className="btn danger" onClick={() => onClear(question)}>
             Reset &amp; restart
           </button>

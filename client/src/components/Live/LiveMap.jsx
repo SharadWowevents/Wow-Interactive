@@ -1,6 +1,23 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import * as topojson from 'topojson-client';
+import { feature } from 'topojson-client';
 import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+import countriesTopo from '../../data/countries-ind.json';
+
+// Pre-convert TopoJSON into GeoJSON FeatureCollection
+let parsedCountriesGeoJson = null;
+try {
+  if (countriesTopo?.objects?.countries) {
+    parsedCountriesGeoJson = feature(countriesTopo, countriesTopo.objects.countries);
+    parsedCountriesGeoJson.features.forEach(f => {
+      if (f.properties) {
+        f.properties.cc = f.properties.ISO_A2;
+      }
+    });
+  }
+} catch (err) {
+  console.warn('[LiveMap] Failed to pre-parse bundled countries TopoJSON:', err);
+}
 
 export default function LiveMap({ data, showQr, theme }) {
   const mapContainerRef = useRef(null);
@@ -11,6 +28,7 @@ export default function LiveMap({ data, showQr, theme }) {
   const fxLayerRef = useRef(null);
   const venueMarkerRef = useRef(null);
   const prevCountsRef = useRef(new Map());
+  const fittedKeyRef = useRef('');
   const [tickerMessage, setTickerMessage] = useState(null);
 
   const cities = data?.cities || [];
@@ -32,6 +50,74 @@ export default function LiveMap({ data, showQr, theme }) {
     return pts;
   }, []);
 
+  // Home country calculation for smart focus
+  const homeCc = useCallback(() => {
+    if (venue?.cc) return venue.cc;
+    const by = {};
+    for (const c of cities) by[c.cc] = (by[c.cc] || 0) + c.count;
+    return Object.entries(by).sort((a, b) => b[1] - a[1])[0]?.[0] || 'IN';
+  }, [venue, cities]);
+
+  const focusCities = useCallback(() => {
+    const home = homeCc();
+    const total = cities.reduce((n, c) => n + c.count, 0) || 1;
+    const homeCities = cities.filter(c => c.cc === home);
+    const homeShare = homeCities.reduce((n, c) => n + c.count, 0) / total;
+    return (homeShare < 0.75 || !homeCities.length) ? cities : homeCities;
+  }, [cities, homeCc]);
+
+  // Re-centre map view
+  const fitMap = useCallback((force = false) => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    const targetCities = focusCities();
+    const pts = targetCities.map(c => [c.lat, c.lon]);
+    if (venue) pts.push([venue.lat, venue.lon]);
+
+    const W = window.innerWidth, H = window.innerHeight;
+    const panelW = cities.length > 0 ? Math.min(380, Math.max(240, W * 0.21)) + W * 0.04 : 0;
+    const key = pts.map(p => p.join(',')).sort().join('|') + `|${W}x${H}|${cities.length > 0}`;
+
+    if (!force && key === fittedKeyRef.current) return;
+
+    if (!force && fittedKeyRef.current) {
+      try {
+        const view = map.getBounds().pad(-0.06);
+        if (pts.every(p => view.contains(p))) {
+          fittedKeyRef.current = key;
+          return;
+        }
+      } catch {}
+    }
+
+    fittedKeyRef.current = key;
+
+    if (!pts.length) {
+      map.setView(venue ? [venue.lat, venue.lon] : [22, 80], 4.5, { animate: !force });
+      return;
+    }
+
+    if (pts.length === 1) {
+      map.flyTo(pts[0], 5.5, { duration: 1.2 });
+      return;
+    }
+
+    map.flyToBounds(L.latLngBounds(pts), {
+      paddingTopLeft: [W * 0.06, H * 0.2],
+      paddingBottomRight: [panelW, H * 0.2],
+      maxZoom: 6.5,
+      duration: 1.4
+    });
+  }, [cities, venue, focusCities]);
+
+  // Listen for re-centre custom event
+  useEffect(() => {
+    const handleFitEvent = () => fitMap(true);
+    window.addEventListener('livemap:fit', handleFitEvent);
+    return () => window.removeEventListener('livemap:fit', handleFitEvent);
+  }, [fitMap]);
+
   // Initialize Map
   useEffect(() => {
     if (!mapContainerRef.current || mapInstanceRef.current) return;
@@ -50,15 +136,27 @@ export default function LiveMap({ data, showQr, theme }) {
     map.attributionControl.setPrefix('');
     map.attributionControl.addAttribution('Cities: GeoNames · Borders: Natural Earth (India view)');
 
-    const countryLayer = L.geoJSON(null, {
+    const minZoom = Math.max(1, Math.log2(window.innerWidth / 256));
+    map.setMinZoom(minZoom);
+
+    const isLight = theme === 'light';
+    const activeCcs = new Set((data?.cities || []).map(c => c.cc));
+
+    const countryLayer = L.geoJSON(parsedCountriesGeoJson || null, {
       interactive: false,
-      style: () => ({
-        className: 'country',
-        fillColor: theme === 'light' ? '#ffffff' : '#1d1940',
-        fillOpacity: 1,
-        color: theme === 'light' ? '#c9cfda' : '#3a3470',
-        weight: 0.8
-      })
+      style: (feat) => {
+        const cc = feat?.properties?.cc;
+        const isHot = cc && activeCcs.has(cc);
+        return {
+          className: 'country',
+          fillColor: isHot
+            ? (isLight ? '#ece7ff' : '#2f2672')
+            : (isLight ? '#ffffff' : '#1d1940'),
+          fillOpacity: 1,
+          color: isLight ? '#c9cfda' : '#3a3470',
+          weight: 0.8
+        };
+      }
     }).addTo(map);
 
     const arcLayer = L.layerGroup().addTo(map);
@@ -71,20 +169,45 @@ export default function LiveMap({ data, showQr, theme }) {
     dotLayerRef.current = dotLayer;
     fxLayerRef.current = fxLayer;
 
-    // Load TopoJSON countries
-    fetch('/geo/countries.json')
-      .then(r => r.json())
-      .then(topo => {
-        if (!topo.objects?.countries) return;
-        const fc = topojson.feature(topo, topo.objects.countries);
-        countryLayer.addData(fc);
-        countryLayer.eachLayer(l => {
-          if (l.feature?.properties) {
-            l.feature.properties.cc = l.feature.properties.ISO_A2;
-          }
-        });
-      })
-      .catch(() => {});
+    // Fallback to fetch if parsedCountriesGeoJson was somehow missing
+    if (!parsedCountriesGeoJson || !parsedCountriesGeoJson.features?.length) {
+      const endpoints = [
+        '/geo/countries.json',
+        '/geo/countries-ind.json',
+        '/api/geo/countries.json',
+        '/api/countries.json'
+      ];
+      (async () => {
+        for (const url of endpoints) {
+          try {
+            const res = await fetch(url);
+            if (!res.ok) continue;
+            const topo = await res.json();
+            if (topo?.objects?.countries) {
+              const fc = feature(topo, topo.objects.countries);
+              fc.features.forEach(f => {
+                if (f.properties) f.properties.cc = f.properties.ISO_A2;
+              });
+              countryLayer.addData(fc);
+
+              const curAct = new Set((data?.cities || []).map(c => c.cc));
+              countryLayer.eachLayer(l => {
+                const isHot = l.feature?.properties?.cc && curAct.has(l.feature.properties.cc);
+                l.setStyle({
+                  fillColor: isHot
+                    ? (isLight ? '#ece7ff' : '#2f2672')
+                    : (isLight ? '#ffffff' : '#1d1940'),
+                  fillOpacity: 1,
+                  color: isLight ? '#c9cfda' : '#3a3470',
+                  weight: 0.8
+                });
+              });
+              break;
+            }
+          } catch {}
+        }
+      })();
+    }
 
     return () => {
       map.remove();
@@ -105,22 +228,23 @@ export default function LiveMap({ data, showQr, theme }) {
     dotLayer.clearLayers();
     arcLayer.clearLayers();
 
-    const topColor = theme === 'light' ? '#5b3df5' : '#ffd166';
-    const dotColor = theme === 'light' ? '#e8417a' : '#ff5c8a';
-    const arcColor = theme === 'light' ? '#5b3df5' : '#ffd166';
+    const isLight = theme === 'light';
+    const topColor = isLight ? '#5b3df5' : '#ffd166';
+    const dotColor = isLight ? '#e8417a' : '#ff5c8a';
+    const arcColor = isLight ? '#5b3df5' : '#ffd166';
 
     // Highlight countries that have participants
     if (countryLayer) {
       const activeCcs = new Set(cities.map(c => c.cc));
       countryLayer.eachLayer(l => {
         const cc = l.feature?.properties?.cc;
-        const isHot = activeCcs.has(cc);
+        const isHot = cc && activeCcs.has(cc);
         l.setStyle({
           fillColor: isHot
-            ? (theme === 'light' ? '#ece7ff' : '#2f2672')
-            : (theme === 'light' ? '#ffffff' : '#1d1940'),
+            ? (isLight ? '#ece7ff' : '#2f2672')
+            : (isLight ? '#ffffff' : '#1d1940'),
           fillOpacity: 1,
-          color: theme === 'light' ? '#c9cfda' : '#3a3470',
+          color: isLight ? '#c9cfda' : '#3a3470',
           weight: 0.8
         });
       });
@@ -147,9 +271,9 @@ export default function LiveMap({ data, showQr, theme }) {
       const vname = venueHasDot ? '' : String(venue.name || '');
       venueMarkerRef.current.setIcon(L.divIcon({
         className: '',
-        html: `<div class="venue" style="display:flex;align-items:center;gap:6px;transform:translate(-13px,-15px);white-space:nowrap">
-          <div style="width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:${topColor};color:#17151f;font-size:15px;box-shadow:0 0 16px ${topColor}">★</div>
-          ${vname ? `<div style="background:var(--panel);border:1px solid var(--panel-line);color:var(--fg);font-weight:800;font-size:15px;padding:3px 10px;border-radius:10px">${vname}</div>` : ''}
+        html: `<div class="venue">
+          <div class="star">★</div>
+          ${vname ? `<div class="vn">${vname}</div>` : ''}
         </div>`,
         iconSize: [0, 0]
       }));
@@ -172,6 +296,7 @@ export default function LiveMap({ data, showQr, theme }) {
         opacity: 0.9,
         fillColor: isTop ? topColor : dotColor,
         fillOpacity: 0.9,
+        className: isTop ? 'city-dot top' : 'city-dot',
         interactive: false
       }).addTo(dotLayer);
 
@@ -193,7 +318,7 @@ export default function LiveMap({ data, showQr, theme }) {
         const pm = L.marker([c.lat, c.lon], {
           icon: L.divIcon({
             className: '',
-            html: `<div style="width:18px;height:18px;margin:-9px 0 0 -9px;border-radius:50%;border:3px solid ${topColor};animation:pulse 2s ease-out forwards"></div>`,
+            html: `<div class="pulse"></div>`,
             iconSize: [0, 0]
           }),
           interactive: false
@@ -211,21 +336,13 @@ export default function LiveMap({ data, showQr, theme }) {
     prevCountsRef.current = new Map(cities.map(c => [c.id, c.count]));
 
     // Auto-fit bounds
-    if (cities.length > 0) {
-      const pts = cities.map(c => [c.lat, c.lon]);
-      if (venue) pts.push([venue.lat, venue.lon]);
-      if (pts.length === 1) {
-        map.flyTo(pts[0], 5.5, { duration: 1.2 });
-      } else {
-        map.flyToBounds(L.latLngBounds(pts), { padding: [80, 80], maxZoom: 6.5, duration: 1.4 });
-      }
-    }
-  }, [cities, venue, theme, arcPoints]);
+    fitMap(false);
+  }, [cities, venue, theme, arcPoints, fitMap]);
 
   return (
     <div style={{ position: 'fixed', inset: 0, overflow: 'hidden' }}>
       {/* Leaflet Map Target */}
-      <div ref={mapContainerRef} style={{ position: 'absolute', inset: 0, background: 'var(--sea)' }} />
+      <div ref={mapContainerRef} style={{ position: 'absolute', inset: 0, background: 'var(--sea, #0a0918)' }} />
 
       {/* Top Header */}
       <div style={{
@@ -236,7 +353,7 @@ export default function LiveMap({ data, showQr, theme }) {
         padding: '3vh 3vw 6vh',
         pointerEvents: 'none',
         zIndex: 500,
-        background: 'linear-gradient(180deg, var(--sea) 0%, transparent 100%)',
+        background: 'linear-gradient(180deg, var(--sea, #0a0918) 0%, transparent 100%)',
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'flex-start',

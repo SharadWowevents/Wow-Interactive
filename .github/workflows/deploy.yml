@@ -1,0 +1,50 @@
+name: Deploy Wow Interactive to Hostinger
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Deploy to VPS
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          timeout: 10m
+          script: |
+            # 1. Environment path setup for non-login SSH sessions
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+            export PATH=$PATH:/usr/local/bin:$HOME/.local/bin
+
+            # 2. Navigate to your project directory
+            cd /var/www/Wow-Interactive
+
+            # 3. Pull the latest code from GitHub
+            git fetch --all
+            git reset --hard origin/main
+
+            # 4. Build the React Frontend
+            echo "Building Frontend..."
+            cd client
+            npm install
+            npm run build
+            cd ..
+
+            # 5. Setup Backend and Restart
+            echo "Updating Backend..."
+            cd server
+            npm install --production
+
+            # 6. Restart PM2 and Nginx
+            echo "Restarting Services..."
+            pm2 restart all || pm2 start server.js --name "wow-interactive"
+            sudo systemctl reload nginx
+
+            echo "Deployment Successful!"

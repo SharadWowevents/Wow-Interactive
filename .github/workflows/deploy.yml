@@ -18,17 +18,6 @@ jobs:
           key: ${{ secrets.DEPLOY_KEY }}
           timeout: 10m
           script: |
-<<<<<<< HEAD
-            # 1. Environment path setup for non-login SSH sessions
-            export NVM_DIR="$HOME/.nvm"
-            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-            export PATH=$PATH:/usr/local/bin:$HOME/.local/bin
-
-            # 2. Navigate to your project directory
-=======
-
-            # 1. Navigate to your project directory
->>>>>>> 86bb5792cabc3570f33a13f60274950ac8e80432
             cd /var/www/Wow-Interactive
 
             # 3. Pull the latest code from GitHub

@@ -160,25 +160,9 @@ exports.getCities = (req, res) => {
 };
 
 exports.streamUpdates = async (req, res) => {
-  try {
-    const q = await Question.findOne({ id: req.params.id }).lean();
-    if (!q) return res.status(404).json({ error: 'Question not found' });
-
-    res.writeHead(200, {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache, no-transform',
-      Connection: 'keep-alive',
-      'X-Accel-Buffering': 'no'
-    });
-
-    res.write('retry: 3000\n');
-    res.write(`data: ${JSON.stringify(summarize(q))}\n\n`);
-
-    const cleanup = addSubscriber(q.id, res);
-    req.on('close', cleanup);
-  } catch (err) {
-    res.status(500).end();
-  }
+  // SSE stream is deprecated to prevent HTTP/1.1 socket exhaustion.
+  // Immediately close response so stale browser tabs do not hang.
+  res.status(204).end();
 };
 
 exports.getCountriesGeoJson = (req, res) => {

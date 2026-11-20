@@ -4,6 +4,7 @@ let io = null;
 
 function initWebSocket(httpServer) {
   io = new Server(httpServer, {
+    path: '/api/socket.io',
     cors: {
       origin: true,
       credentials: true

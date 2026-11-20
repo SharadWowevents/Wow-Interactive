@@ -12,7 +12,8 @@ export default defineConfig({
       },
       '/api': {
         target: 'http://localhost:5000',
-        changeOrigin: true
+        changeOrigin: true,
+        ws: true
       },
       '/geo': {
         target: 'http://localhost:5000',

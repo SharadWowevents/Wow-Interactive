@@ -8,7 +8,8 @@ export const socket = io('/', {
   reconnectionAttempts: Infinity,
   reconnectionDelay: 1000,
   reconnectionDelayMax: 5000,
-  transports: ['websocket', 'polling']
+  transports: ['websocket'],
+  upgrade: false
 });
 
 export const joinQuestionRoom = (qid) => {

@@ -140,6 +140,7 @@ export default function LivePage() {
     socket.on('deleted', handleWsDeleted);
     socket.on('connect', handleWsConnect);
     socket.on('disconnect', handleWsDisconnect);
+    socket.on('connect_error', handleWsDisconnect);
 
     // If socket is not yet connected after 3.5 seconds, start short-interval polling
     if (!socket.connected) {
@@ -156,6 +157,7 @@ export default function LivePage() {
       socket.off('deleted', handleWsDeleted);
       socket.off('connect', handleWsConnect);
       socket.off('disconnect', handleWsDisconnect);
+      socket.off('connect_error', handleWsDisconnect);
       leaveQuestionRoom(id);
 
       clearTimeout(failTimer);

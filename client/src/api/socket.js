@@ -3,12 +3,11 @@ import { io } from 'socket.io-client';
 // In development, Vite proxies /socket.io to backend (port 5000)
 // In production, client is served from same origin (port 5000)
 export const socket = io('/', {
-  path: '/api/socket.io',
   autoConnect: true,
   reconnection: true,
-  reconnectionAttempts: 20,
-  reconnectionDelay: 2000,
-  reconnectionDelayMax: 10000,
+  reconnectionAttempts: Infinity,
+  reconnectionDelay: 1000,
+  reconnectionDelayMax: 5000,
   transports: ['websocket', 'polling']
 });
 

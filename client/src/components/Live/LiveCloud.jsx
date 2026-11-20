@@ -58,85 +58,155 @@ export default function LiveCloud({ data, showQr, theme }) {
   const sorted = [...words].sort((a, b) => b.count - a.count);
   const max = sorted.length ? sorted[0].count : 0;
   const min = sorted.length ? sorted[sorted.length - 1].count : 0;
-  // Longest answer overall decides the cap, so a long full name
-  // ("Deepak Kumar") always fits on one line instead of being split.
-  const longest = sorted.reduce((acc, w) => Math.max(acc, (w.text || '').length), 3);
-  const fitPx = box.width > 0 ? (box.width * 0.94) / (longest * 0.6) : 120;
-  const heightPx = box.height > 0 ? box.height * (sorted.length <= 3 ? 0.3 : 0.24) : 120;
-  const maxPx = Math.max(28, Math.min(fitPx, heightPx, 170));
-  const minPx = Math.max(13, Math.min(maxPx * 0.2, 30));
-  const crowdScale = sorted.length <= 3 ? 1 : sorted.length <= 6 ? 0.85 : sorted.length <= 10 ? 0.7 : sorted.length <= 20 ? 0.55 : 0.42;
-  const sizeOf = (count) => {
-    if (max === min) return maxPx * (sorted.length < 6 ? 0.72 : 0.45) * crowdScale;
-    return (minPx + (maxPx - minPx) * Math.pow((count - min) / (max - min), 0.7)) * crowdScale;
-  };
+  // Re-measure once the display font has actually loaded, otherwise the
+  // first layout is computed with fallback-font widths.
+  const [fontTick, setFontTick] = useState(0);
+  useEffect(() => {
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(() => setFontTick((t) => t + 1)).catch(() => {});
+    }
+  }, []);
+
   const colorOf = (word, index) => {
     if (index === 0) return palette[0];
     const base = palette[1 + (index % (palette.length - 1))];
     return word.count >= max * 0.3 ? base : `${base}c8`;
   };
 
-  // Random scattered placement (biggest answers are placed first).
-  // Most-repeated answers get the top/centre of the screen and the
-  // highest z-index, so they always render in front of the rest.
+  // Dense packed cloud:
+  //  - every word is measured with real canvas text metrics
+  //  - the biggest answer is placed first, in the centre, on the top layer
+  //  - the others spiral outward from it (random start angle per word, so it
+  //    still looks organic) and sit as close as possible without touching
+  //  - a global scale is binary-searched, so the cloud grows to FILL the
+  //    available area: few answers = huge text, many answers = still readable
   const placements = useMemo(() => {
-    const W = Math.max(box.width, 640);
-    const H = Math.max(box.height, 360);
-    const placed = [];
-    return sorted.map((word, index) => {
-      let fontSize = sizeOf(word.count);
-      let estW = Math.max(24, (word.text || '').length * fontSize * 0.58);
-      if (estW > W * 0.94) {
-        fontSize *= (W * 0.94) / estW;
-        estW = W * 0.94;
+    const W = box.width;
+    const H = box.height;
+    if (!W || !H || !sorted.length) return [];
+
+    const FONT = "'Bricolage Grotesque', 'Plus Jakarta Sans', sans-serif";
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const widthCache = new Map();
+    const widthAt100 = (text, weight) => {
+      const key = `${weight}|${text}`;
+      if (!widthCache.has(key)) {
+        ctx.font = `${weight} 100px ${FONT}`;
+        widthCache.set(key, ctx.measureText(text).width);
       }
-      const estH = fontSize * 1.1;
-      const rng = seededRandom(word.text || String(index));
-      const rotation = index < 2 ? 0 : Math.round((rng() * 8 - 4) * 10) / 10;
+      return widthCache.get(key);
+    };
 
-      // Preferred spot: #1 sits top-centre, next ranks near the centre,
-      // everyone else gets their own random target across the screen.
-      const prefX = index === 0 ? W * 0.5 : index < 3 ? W * (0.32 + rng() * 0.36) : W * (0.14 + rng() * 0.72);
-      const prefY = index === 0 ? H * 0.36 : index < 3 ? H * (0.26 + rng() * 0.3) : H * (0.12 + rng() * 0.72);
-
-      let best = null;
-      for (let attempt = 0; attempt < 180; attempt++) {
-        const left = 8 + rng() * Math.max(1, W - estW - 16);
-        const topEdge = 6 + rng() * Math.max(1, H - estH - 12);
-        const rect = { left, top: topEdge, right: left + estW, bottom: topEdge + estH };
-        let overlap = 0;
-        for (const other of placed) {
-          const ox = Math.max(0, Math.min(rect.right, other.right + 10) - Math.max(rect.left, other.left - 10));
-          const oy = Math.max(0, Math.min(rect.bottom, other.bottom + 6) - Math.max(rect.top, other.top - 6));
-          overlap += ox * oy;
-        }
-        const dx = (left + estW / 2 - prefX) / W;
-        const dy = (topEdge + estH / 2 - prefY) / H;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        const score = overlap * 20 + dist * (index === 0 ? 9000 : index < 3 ? 3500 : 900);
-        if (!best || score < best.score) best = { ...rect, score, overlap };
-        // Lower ranks: settle for the first roomy random spot (keeps the scatter)
-        if (overlap === 0 && attempt >= 28 && index >= 3) {
-          best = { ...rect, score, overlap };
-          break;
-        }
-        if (overlap === 0 && dist < 0.16 && index < 3) break;
-      }
-
-      placed.push(best);
-      return {
-        word,
-        index,
-        fontSize,
-        rotation,
-        xPct: ((best.left + estW / 2) / W) * 100,
-        yPct: ((best.top + estH / 2) / H) * 100,
-        // Most-repeated = front layer (higher count / rank renders on top)
-        zIndex: 100 + (sorted.length - index) * 10,
-      };
+    const MIN_REL = 0.46; // smallest answer is never below 46% of the biggest
+    const items = sorted.map((word, index) => {
+      const rel = max === min ? 1 : MIN_REL + (1 - MIN_REL) * Math.pow((word.count - min) / (max - min), 0.6);
+      const weight = word.count >= max * 0.6 ? 800 : word.count >= max * 0.3 ? 700 : 600;
+      return { word, index, rel, weight, w100: widthAt100(word.text || '', weight) };
     });
+
+    const GAP = 7; // px gap between words (kept small on purpose)
+    const EDGE = 10;
+    const aspect = Math.min(2.6, Math.max(1, W / H));
+
+    const pack = (scale) => {
+      const placed = [];
+      const out = [];
+      for (const it of items) {
+        let fontSize = scale * it.rel;
+        let w = (it.w100 * fontSize) / 100;
+        // A very long phrase is shrunk on its own so it still fits in one line.
+        if (w > W - EDGE * 2) {
+          fontSize *= (W - EDGE * 2) / w;
+          w = W - EDGE * 2;
+        }
+        const h = fontSize * 1.02;
+        const rng = seededRandom(it.word.text || String(it.index));
+        const cx = W / 2;
+        const cy = it.index === 0 ? H * 0.46 : H / 2;
+        let a = it.index === 0 ? 0 : rng() * Math.PI * 2;
+        let found = null;
+
+        for (let step = 0; step < 6000; step++) {
+          a += 0.22;
+          const r = it.index === 0 ? 0 : 1.5 * a;
+          const x = cx + r * Math.cos(a) * aspect;
+          const y = cy + r * Math.sin(a);
+          const left = x - w / 2;
+          const right = x + w / 2;
+          const topY = y - h / 2;
+          const bottom = y + h / 2;
+          if (left < EDGE || right > W - EDGE || topY < EDGE * 0.5 || bottom > H - EDGE * 0.5) {
+            if (it.index === 0) break;
+            if (r > Math.max(W, H) * aspect) break;
+            continue;
+          }
+          let hit = false;
+          for (const p of placed) {
+            if (left < p.right + GAP && right > p.left - GAP && topY < p.bottom + GAP * 0.6 && bottom > p.top - GAP * 0.6) {
+              hit = true;
+              break;
+            }
+          }
+          if (!hit) {
+            found = { left, right, top: topY, bottom, x, y };
+            break;
+          }
+          if (it.index === 0) break;
+        }
+
+        if (!found) return null;
+        placed.push(found);
+        out.push({ it, fontSize, x: found.x, y: found.y });
+      }
+      return out;
+    };
+
+    // Binary search for the biggest scale where everything fits.
+    const hiScale = Math.max(40, Math.min(H * 0.34, 175));
+    const loScale = 12;
+    let best = pack(loScale);
+    if (best) {
+      let lo = loScale;
+      let hi = hiScale;
+      const topFit = pack(hi);
+      if (topFit) {
+        best = topFit;
+      } else {
+        for (let i = 0; i < 14; i++) {
+          const mid = (lo + hi) / 2;
+          const res = pack(mid);
+          if (res) {
+            best = res;
+            lo = mid;
+          } else {
+            hi = mid;
+          }
+        }
+      }
+    } else {
+      // Extreme case (hundreds of long phrases): fall back to a tiny scale and
+      // tolerate overlap rather than dropping answers.
+      best = items.map((it, i) => ({
+        it,
+        fontSize: 12 * it.rel,
+        x: W * (0.1 + ((i * 0.37) % 0.8)),
+        y: H * (0.08 + ((i * 0.23) % 0.84)),
+      }));
+    }
+
+    return best.map(({ it, fontSize, x, y }) => ({
+      word: it.word,
+      index: it.index,
+      fontSize,
+      rotation: 0,
+      xPct: (x / W) * 100,
+      yPct: (y / H) * 100,
+      // Most-repeated = front layer
+      zIndex: 100 + (sorted.length - it.index) * 10,
+    }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sorted.map((w) => `${w.text}:${w.count}`).join('|'), box.width, box.height]);
+  }, [sorted.map((w) => `${w.text}:${w.count}`).join('|'), box.width, box.height, fontTick]);
 
   return (
     <div style={{
@@ -214,7 +284,7 @@ export default function LiveCloud({ data, showQr, theme }) {
                   lineHeight: 1.02,
                   letterSpacing: '-0.02em',
                   fontSize: `${fontSize}px`,
-                  fontWeight: word.count >= max * 0.6 ? 800 : word.count >= max * 0.3 ? 700 : 500,
+                  fontWeight: word.count >= max * 0.6 ? 800 : word.count >= max * 0.3 ? 700 : 600,
                   color: colorOf(word, index),
                   textShadow: index < 3 ? '0 6px 28px rgba(0,0,0,0.45)' : 'none',
                   transition: 'left 0.6s ease, top 0.6s ease, font-size 0.45s ease, color 0.45s ease',

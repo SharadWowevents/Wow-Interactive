@@ -3,6 +3,7 @@ import { feature } from 'topojson-client';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import countriesTopo from '../../data/countries-ind.json';
+import QrImage from '../Common/QrImage';
 
 // Pre-convert TopoJSON into GeoJSON FeatureCollection
 let parsedCountriesGeoJson = null;
@@ -489,7 +490,7 @@ export default function LiveMap({ data, showQr, theme }) {
           backdropFilter: 'blur(10px)'
         }}>
           <div style={{ width: 'clamp(84px, 11vh, 150px)', aspectRatio: '1', background: '#fff', borderRadius: '12px', padding: '6px' }}>
-            <img src={`/api/questions/${data?.id}/qr.svg`} alt="QR code" style={{ width: '100%', height: '100%', display: 'block' }} />
+            <QrImage qid={data?.id} />
           </div>
           <div>
             <div style={{ fontWeight: 800, fontFamily: 'var(--display)', fontSize: 'clamp(16px, 1.6vw, 26px)' }}>Scan to add your city</div>
@@ -503,7 +504,7 @@ export default function LiveMap({ data, showQr, theme }) {
         <div style={{ position: 'fixed', inset: 0, zIndex: 550, display: 'grid', placeItems: 'center', pointerEvents: 'none' }}>
           <div style={{ pointerEvents: 'auto', textAlign: 'center', background: 'var(--panel)', border: '1px solid var(--panel-line)', borderRadius: '26px', padding: '28px 34px', backdropFilter: 'blur(10px)' }}>
             <div style={{ width: 'min(42vh, 36vw)', aspectRatio: '1', background: '#fff', borderRadius: '18px', padding: '12px', margin: '0 auto' }}>
-              <img src={`/api/questions/${data?.id}/qr.svg`} alt="QR code" style={{ width: '100%', height: '100%', display: 'block' }} />
+              <QrImage qid={data?.id} />
             </div>
             <h2 style={{ fontSize: 'clamp(22px, 2.4vw, 38px)', marginTop: '2.4vh' }}>Where are you from?</h2>
             <p style={{ color: 'var(--fg2)', margin: '6px 0 0', fontSize: 'clamp(14px, 1.3vw, 20px)', fontWeight: 600 }}>Scan to put your city on the map</p>

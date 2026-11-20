@@ -15,10 +15,7 @@ import QuestionCard from '../components/Admin/QuestionCard';
 import QrModal from '../components/Admin/QrModal';
 import EditModal from '../components/Admin/EditModal';
 import ChangePasswordModal from '../components/Admin/ChangePasswordModal';
-<<<<<<< HEAD
-=======
 import ExportCsvModal from '../components/Admin/ExportCsvModal';
->>>>>>> 86bb5792cabc3570f33a13f60274950ac8e80432
 import Toast from '../components/Common/Toast';
 
 export default function AdminPage() {

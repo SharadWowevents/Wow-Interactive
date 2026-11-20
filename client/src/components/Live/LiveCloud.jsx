@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import QrImage from '../Common/QrImage';
 
 // Stable per-word random source: positions look random, but the same
 // answer always gets the same spots, so the cloud doesn't jump around
@@ -244,11 +245,7 @@ export default function LiveCloud({ data, showQr, theme }) {
                 boxShadow: '0 20px 60px rgba(0,0,0,.35)',
                 margin: '0 auto'
               }}>
-                <img
-                  src={`/api/questions/${data?.id}/qr.svg`}
-                  alt="QR code"
-                  style={{ width: '100%', height: '100%', display: 'block' }}
-                />
+                <QrImage qid={data?.id} />
               </div>
               <h2 style={{ fontSize: 'clamp(22px, 2.6vw, 40px)', marginTop: '3vh' }}>
                 Scan to answer
@@ -273,11 +270,7 @@ export default function LiveCloud({ data, showQr, theme }) {
               padding: '6px',
               flex: 'none'
             }}>
-              <img
-                src={`/api/questions/${data?.id}/qr.svg`}
-                alt="QR code"
-                style={{ width: '100%', height: '100%', display: 'block' }}
-              />
+              <QrImage qid={data?.id} />
             </div>
             <div>
               <div style={{ fontWeight: 800, fontFamily: 'var(--display)', fontSize: 'clamp(16px, 1.7vw, 28px)' }}>

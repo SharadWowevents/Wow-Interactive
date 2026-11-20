@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import QrImage from '../Common/QrImage';
 
 export default function QrModal({ question, onClose }) {
   useEffect(() => {
@@ -21,11 +22,7 @@ export default function QrModal({ question, onClose }) {
           {question.text}
         </h2>
         <div style={{ maxWidth: '420px', margin: '0 auto', background: '#fff', borderRadius: '18px', padding: '16px', boxShadow: '0 8px 30px rgba(0,0,0,.08)' }}>
-          <img
-            alt="QR code"
-            src={`/api/questions/${question.id}/qr.svg`}
-            style={{ width: '100%', aspectRatio: '1', display: 'block' }}
-          />
+          <QrImage qid={question.id} style={{ aspectRatio: '1' }} />
         </div>
         <div style={{ fontSize: '18px', fontWeight: 700, marginTop: '16px', wordBreak: 'break-all', color: 'var(--ink)' }}>
           {displayUrl}

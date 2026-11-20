@@ -74,11 +74,10 @@ export default function LivePage() {
     return () => clearTimeout(timer);
   }, [data?.nextDayStart, id]);
 
-  // Real-Time WebSockets & Fallback SSE Stream Setup
+  // Real-Time WebSockets Setup with graceful polling fallback on disconnect
   useEffect(() => {
-    let es = null;
-    let failTimer = null;
     let pollInterval = null;
+    let failTimer = null;
 
     const initialFetch = async () => {
       try {
@@ -92,7 +91,7 @@ export default function LivePage() {
 
     initialFetch();
 
-    // 1. WebSockets Real-time connection
+    // 1. WebSockets Real-time connection (does NOT lock HTTP/1.1 connection slots)
     joinQuestionRoom(id);
 
     const handleWsUpdate = (updatedData) => {
@@ -107,13 +106,34 @@ export default function LivePage() {
       setMissing(true);
     };
 
+    const startPollingFallback = () => {
+      if (!pollInterval) {
+        pollInterval = setInterval(async () => {
+          try {
+            const d = await getCloudData(id);
+            setData(d);
+            setIsReconnecting(false);
+          } catch (_) {}
+        }, 4000);
+      }
+    };
+
+    const stopPollingFallback = () => {
+      if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+      }
+    };
+
     const handleWsConnect = () => {
       setIsReconnecting(false);
+      stopPollingFallback();
       joinQuestionRoom(id);
     };
 
     const handleWsDisconnect = () => {
       setIsReconnecting(true);
+      startPollingFallback();
     };
 
     socket.on('update', handleWsUpdate);
@@ -121,46 +141,15 @@ export default function LivePage() {
     socket.on('connect', handleWsConnect);
     socket.on('disconnect', handleWsDisconnect);
 
-    // 2. Setup SSE as fallback
-    try {
-      es = new EventSource(`/api/public/questions/${id}/stream`);
-
-      es.onmessage = (e) => {
-        clearTimeout(failTimer);
-        setIsReconnecting(false);
-        if (pollInterval) {
-          clearInterval(pollInterval);
-          pollInterval = null;
+    // If socket is not yet connected after 3.5 seconds, start short-interval polling
+    if (!socket.connected) {
+      failTimer = setTimeout(() => {
+        if (!socket.connected) {
+          setIsReconnecting(true);
+          startPollingFallback();
         }
-        try {
-          const d = JSON.parse(e.data);
-          if (d.deleted) {
-            setMissing(true);
-            es.close();
-          } else {
-            setData(d);
-          }
-        } catch (_) {}
-      };
-
-      es.onerror = () => {
-        clearTimeout(failTimer);
-        failTimer = setTimeout(() => {
-          if (!socket.connected) {
-            setIsReconnecting(true);
-          }
-          if (!pollInterval && !socket.connected) {
-            pollInterval = setInterval(async () => {
-              try {
-                const d = await getCloudData(id);
-                setData(d);
-                setIsReconnecting(false);
-              } catch (_) {}
-            }, 4000);
-          }
-        }, 3500);
-      };
-    } catch (_) {}
+      }, 3500);
+    }
 
     return () => {
       socket.off('update', handleWsUpdate);
@@ -170,8 +159,7 @@ export default function LivePage() {
       leaveQuestionRoom(id);
 
       clearTimeout(failTimer);
-      if (pollInterval) clearInterval(pollInterval);
-      if (es) es.close();
+      stopPollingFallback();
     };
   }, [id]);
 

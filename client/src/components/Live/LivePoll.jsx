@@ -1,4 +1,5 @@
 import React from 'react';
+import QrImage from '../Common/QrImage';
 
 const COLORS = ['#7cc8ff', '#ff6b9a', '#5fe3b4', '#9d8bff', '#ffa36c', '#f9f871', '#ff8fab', '#8ee3f5'];
 
@@ -246,11 +247,7 @@ export default function LivePoll({ data, showQr }) {
               maxWidth: '300px',
               margin: '0 auto'
             }}>
-              <img
-                src={`/api/questions/${data?.id}/qr.svg`}
-                alt="QR code"
-                style={{ width: '100%', height: '100%', display: 'block' }}
-              />
+              <QrImage qid={data?.id} />
             </div>
             <h2 style={{ fontSize: 'clamp(20px, 1.9vw, 32px)', marginTop: '16px' }}>
               Scan to vote

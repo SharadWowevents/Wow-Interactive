@@ -335,6 +335,9 @@ exports.getQr = async (req, res) => {
     const q = await Question.findOne({ id: req.params.id }).lean();
     if (!q) return res.status(404).send('Question not found');
 
+    // Cache QR code for 24 hours in browser / CDN since question URL is immutable
+    res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
+
     const url = links(req, q).answer;
     const opts = {
       errorCorrectionLevel: 'M',

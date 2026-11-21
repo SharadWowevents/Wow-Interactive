@@ -74,76 +74,31 @@ export default function CreateQuestionForm({ onCreate }) {
 
   return (
     <form className="card create" onSubmit={handleSubmit} style={{ padding: '20px', marginBottom: '28px' }}>
-      {/* Tabs */}
-      <div style={{
-        display: 'inline-flex',
-        background: 'var(--bg)',
-        border: '1px solid var(--line)',
-        borderRadius: '12px',
-        padding: '4px',
-        gap: '4px',
-        marginBottom: '16px'
-      }}>
+      <div className="create-tabs">
         <button
           type="button"
+          className={`create-tab${type === 'cloud' ? ' active' : ''}`}
           onClick={() => handleTabChange('cloud')}
-          style={{
-            border: 0,
-            background: type === 'cloud' ? 'var(--surface)' : 'none',
-            color: type === 'cloud' ? 'var(--ink)' : 'var(--muted)',
-            boxShadow: type === 'cloud' ? '0 1px 3px rgba(0,0,0,.08)' : 'none',
-            padding: '8px 14px',
-            borderRadius: '9px',
-            fontWeight: 700,
-            fontSize: '14px',
-            cursor: 'pointer'
-          }}
         >
           ☁️ Word cloud
         </button>
         <button
           type="button"
+          className={`create-tab${type === 'map' ? ' active' : ''}`}
           onClick={() => handleTabChange('map')}
-          style={{
-            border: 0,
-            background: type === 'map' ? 'var(--surface)' : 'none',
-            color: type === 'map' ? 'var(--ink)' : 'var(--muted)',
-            boxShadow: type === 'map' ? '0 1px 3px rgba(0,0,0,.08)' : 'none',
-            padding: '8px 14px',
-            borderRadius: '9px',
-            fontWeight: 700,
-            fontSize: '14px',
-            cursor: 'pointer'
-          }}
         >
-          📍 Map: where are you from?
+          📍 Map
         </button>
         <button
           type="button"
+          className={`create-tab${type === 'poll' ? ' active' : ''}`}
           onClick={() => handleTabChange('poll')}
-          style={{
-            border: 0,
-            background: type === 'poll' ? 'var(--surface)' : 'none',
-            color: type === 'poll' ? 'var(--ink)' : 'var(--muted)',
-            boxShadow: type === 'poll' ? '0 1px 3px rgba(0,0,0,.08)' : 'none',
-            padding: '8px 14px',
-            borderRadius: '9px',
-            fontWeight: 700,
-            fontSize: '14px',
-            cursor: 'pointer'
-          }}
         >
           📊 Poll
         </button>
       </div>
 
-      {/* Grid Inputs */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: type === 'map' ? '1fr 300px auto' : type === 'poll' ? '1fr auto' : '1fr 170px 150px auto',
-        gap: '12px',
-        alignItems: 'end'
-      }}>
+      <div className={`create-grid ${type}`}>
         <label className="field" style={{ minWidth: 0 }}>
           Question
           <input
@@ -190,31 +145,20 @@ export default function CreateQuestionForm({ onCreate }) {
         )}
 
         <button
-          className="btn primary"
+          className="btn primary create-submit"
           type="submit"
           disabled={isSubmitting}
-          style={{ height: '44px', fontWeight: 700 }}
         >
           {type === 'poll' ? 'Create poll' : 'Create question'}
         </button>
 
         {type === 'poll' && (
-          <div style={{ gridColumn: '1 / -1', marginTop: '4px' }}>
+          <div className="poll-options">
             <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--muted)' }}>Options</span>
             <div style={{ display: 'grid', gap: '8px', marginTop: '6px' }}>
               {options.map((opt, i) => (
-                <div key={i} style={{ display: 'grid', gridTemplateColumns: '28px 1fr 36px', gap: '8px', alignItems: 'center' }}>
-                  <div style={{
-                    width: '28px',
-                    height: '28px',
-                    borderRadius: '8px',
-                    background: 'var(--accent-soft)',
-                    color: '#3a23c4',
-                    display: 'grid',
-                    placeItems: 'center',
-                    fontWeight: 800,
-                    fontSize: '13px'
-                  }}>
+                <div key={i} className="poll-option-row">
+                  <div className="poll-option-letter">
                     {String.fromCharCode(65 + i)}
                   </div>
                   <input
@@ -243,7 +187,7 @@ export default function CreateQuestionForm({ onCreate }) {
                 </div>
               ))}
             </div>
-            <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap', marginTop: '10px' }}>
+            <div className="poll-option-controls">
               <button
                 type="button"
                 className="btn small"
@@ -252,8 +196,8 @@ export default function CreateQuestionForm({ onCreate }) {
               >
                 + Add option
               </button>
-              <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', fontSize: '14px', fontWeight: 600 }}>
-                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+              <div className="poll-checks">
+                <label className="poll-check">
                   <input
                     type="checkbox"
                     checked={multi}
@@ -262,7 +206,7 @@ export default function CreateQuestionForm({ onCreate }) {
                   />
                   Allow multiple answers
                 </label>
-                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                <label className="poll-check">
                   <input
                     type="checkbox"
                     checked={showResults}

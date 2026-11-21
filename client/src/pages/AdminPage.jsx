@@ -253,10 +253,9 @@ export default function AdminPage() {
 
   // Admin Dashboard View
   return (
-    <div style={{ maxWidth: '1040px', margin: '0 auto', padding: '28px 20px 80px' }}>
-      {/* Top Header */}
-      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '24px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+    <div className="admin-page">
+      <header className="admin-header">
+        <div className="admin-header-brand">
           <div style={{
             width: '38px',
             height: '38px',
@@ -266,18 +265,19 @@ export default function AdminPage() {
             placeItems: 'center',
             color: '#fff',
             fontFamily: 'var(--display)',
-            fontWeight: 800
+            fontWeight: 800,
+            flexShrink: 0
           }}>
             W
           </div>
-          <div>
+          <div style={{ minWidth: 0 }}>
             <h1 style={{ fontSize: '22px' }}>Wow Interactive</h1>
             <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted)' }}>
-              MERN live word clouds, interactive maps &amp; polls
+              Live word clouds, maps &amp; polls
             </p>
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div className="admin-header-actions">
           <button className="btn small" onClick={() => setIsChangePwOpen(true)}>
             🔒 Change password
           </button>
@@ -287,11 +287,9 @@ export default function AdminPage() {
         </div>
       </header>
 
-      {/* Create Form */}
       <CreateQuestionForm onCreate={handleCreate} />
 
-      {/* Questions Section */}
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', margin: '0 2px 12px' }}>
+      <div className="admin-section-head">
         <h2 style={{ fontSize: '17px' }}>Your questions</h2>
         <span className="muted" style={{ fontSize: '13px' }}>
           {questions.length ? `${questions.length} question${questions.length > 1 ? 's' : ''}` : ''}

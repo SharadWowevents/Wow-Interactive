@@ -23,39 +23,20 @@ export default function QuestionCard({
     : `${question.total} answer${question.total === 1 ? '' : 's'} · ${question.participants} ${question.participants === 1 ? 'person' : 'people'}${question.blocked ? ` · ${question.blocked} filtered` : ''}`;
 
   return (
-    <div className="card q" style={{
-      padding: '18px',
-      marginBottom: '16px',
-      display: 'grid',
-      gridTemplateColumns: '132px 1fr',
-      gap: '18px'
-    }}>
-      {/* QR Thumbnail */}
+    <div className="card q q-card">
       <div
-        className="qr-thumb"
+        className="q-card-qr"
         onClick={() => onShowQr(question)}
         title="Show QR full screen"
-        style={{
-          width: '132px',
-          height: '132px',
-          borderRadius: '12px',
-          border: '1px solid var(--line)',
-          padding: '6px',
-          background: '#fff',
-          cursor: 'zoom-in'
-        }}
       >
         <img
           alt="QR code"
           src={`/api/questions/${question.id}/qr.svg`}
-          style={{ width: '100%', height: '100%', display: 'block' }}
         />
       </div>
 
-      {/* Main Content */}
-      <div style={{ minWidth: 0 }}>
-        {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', fontSize: '13px', color: 'var(--muted)' }}>
+      <div className="q-card-body">
+        <div className="q-card-meta">
           <span style={{ fontWeight: 700, color: 'var(--ink)' }}>
             {isMap ? '📍 Map' : isPoll ? '📊 Poll' : '☁️ Word cloud'}
           </span>
@@ -66,57 +47,28 @@ export default function QuestionCard({
           <span>{statsText}</span>
         </div>
 
-        {/* Title */}
-        <h3 style={{ fontSize: '20px', margin: '6px 0 10px', lineHeight: 1.25 }}>
+        <h3 className="q-card-title">
           {question.text}
         </h3>
 
-        {/* Links */}
-        <div style={{ display: 'grid', gap: '6px', marginBottom: '12px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', minWidth: 0 }}>
-            <span style={{ width: '78px', flex: 'none', color: 'var(--muted)', fontWeight: 600 }}>Answer link</span>
-            <code style={{
-              flex: 1,
-              minWidth: 0,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-              background: 'var(--bg)',
-              border: '1px solid var(--line)',
-              padding: '4px 8px',
-              borderRadius: '7px',
-              fontSize: '12.5px'
-            }}>
-              {question.links?.answer}
-            </code>
+        <div className="q-links">
+          <div className="q-link-row">
+            <span className="q-link-label">Answer link</span>
+            <code className="q-link-url">{question.links?.answer}</code>
             <button className="btn small" onClick={() => onCopy(question.links?.answer)}>
               Copy
             </button>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', minWidth: 0 }}>
-            <span style={{ width: '78px', flex: 'none', color: 'var(--muted)', fontWeight: 600 }}>Live view</span>
-            <code style={{
-              flex: 1,
-              minWidth: 0,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-              background: 'var(--bg)',
-              border: '1px solid var(--line)',
-              padding: '4px 8px',
-              borderRadius: '7px',
-              fontSize: '12.5px'
-            }}>
-              {question.links?.live}
-            </code>
+          <div className="q-link-row">
+            <span className="q-link-label">Live view</span>
+            <code className="q-link-url">{question.links?.live}</code>
             <button className="btn small" onClick={() => onCopy(question.links?.live)}>
               Copy
             </button>
           </div>
         </div>
 
-        {/* Action Buttons */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+        <div className="q-actions">
           <a
             className="btn primary"
             href={question.links?.live}
@@ -166,33 +118,19 @@ export default function QuestionCard({
           </button>
         </div>
 
-        {/* Chips or Poll Bars */}
         <div style={{ marginTop: '14px' }}>
           {isPoll ? (
-            <div style={{ display: 'grid', gap: '7px', maxWidth: '620px' }}>
+            <div className="q-poll-bars">
               {(question.top || []).map((o, i) => (
-                <div
-                  key={o.key || i}
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: '1fr auto',
-                    gap: '2px 10px',
-                    fontSize: '13.5px',
-                    fontWeight: 600
-                  }}
-                >
-                  <span style={{ color: o.leader && question.total ? '#5b3df5' : 'inherit' }}>
+                <div key={o.key || i} className="q-poll-row">
+                  <span
+                    className="q-poll-label"
+                    style={{ color: o.leader && question.total ? '#5b3df5' : 'inherit' }}
+                  >
                     {String.fromCharCode(65 + i)}. {o.text} {o.leader && question.total ? '👑' : ''}
                   </span>
-                  <b>{o.count} · {Math.round(o.pct)}%</b>
-                  <div style={{
-                    gridColumn: '1 / -1',
-                    height: '7px',
-                    borderRadius: '5px',
-                    background: 'var(--bg)',
-                    border: '1px solid var(--line)',
-                    overflow: 'hidden'
-                  }}>
+                  <b className="q-poll-pct">{o.count} · {Math.round(o.pct)}%</b>
+                  <div className="q-poll-track">
                     <div style={{
                       height: '100%',
                       width: `${o.pct}%`,
@@ -205,7 +143,7 @@ export default function QuestionCard({
               ))}
             </div>
           ) : (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+            <div className="q-chips">
               {(question.top || []).map((w) => (
                 <span
                   key={w.key}
@@ -285,7 +223,6 @@ export default function QuestionCard({
           )}
         </div>
 
-        {/* Subtitle */}
         <div className="muted" style={{ fontSize: '12px', marginTop: '10px' }}>
           {isPoll
             ? `${question.multi ? 'Multiple choice' : 'Single choice'} · one vote per person · results ${question.showResults ? 'shown live on screen' : 'hidden on screen until revealed'}`
